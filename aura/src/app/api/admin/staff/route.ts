@@ -397,10 +397,17 @@ export async function PUT(request: Request) {
     }
 
     // Campos permitidos — role/secondaryRoles só chegam aqui se passaram nas guards acima
-    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role', 'uiTheme', 'sidebarDefaultCollapsed', 'staysViewAtivas', 'staysViewFuturas', 'secondaryRoles'];
+    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role', 'uiTheme', 'sidebarDefaultCollapsed', 'staysViewAtivas', 'staysViewFuturas', 'secondaryRoles', 'vehiclePlate'];
     const safeUpdates: Record<string, unknown> = {};
     for (const key of allowedFields) {
       if (key in updates) safeUpdates[key] = updates[key];
+    }
+
+    // A guarita busca a placa por igualdade: "abc-1d23" nunca casaria com
+    // "ABC1D23". Normaliza aqui, que é por onde toda edição passa.
+    if (typeof safeUpdates.vehiclePlate === 'string') {
+      const plate = safeUpdates.vehiclePlate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      safeUpdates.vehiclePlate = plate || null;
     }
 
     if (Object.keys(safeUpdates).length === 0) {

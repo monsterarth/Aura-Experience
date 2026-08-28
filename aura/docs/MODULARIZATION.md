@@ -36,8 +36,15 @@ O mecanismo não parte do zero — o `hasStock` é o gabarito completo do padrã
 
 - Proto-flags em `properties.settings`: `hasStock`, `hasBreakfast`, `hasKDS`, `whatsappEnabled`.
 - Allowlist com dono por chave: `src/lib/property-settings.ts` (flags de módulo = super_admin).
-- Sidebar escondendo grupo por flag: `src/components/admin/Sidebar.tsx` (gate do
-  `estoque_grupo` por `settings.hasStock === false`).
+- **Registro isomórfico de leitura: `src/lib/modules.ts`** — chave em `settings` + default de cada
+  módulo, num arquivo só, lido pelo menu (browser) e pelas rotas (servidor). Nasceu com a Guarita
+  (27/08/2026), quando ficou claro que a regra escrita em dois lugares vira módulo escondido no
+  menu e aberto na API. O default é **por módulo**: LIGADO para o que já estava em operação quando
+  a flag nasceu (`hasStock` — desligar retroativamente arrancaria o menu de quem usa), DESLIGADO
+  para módulo novo, que ninguém contratou (`hasGuarita`, `hasHsystem`).
+- Sidebar escondendo grupo/item por flag: `src/components/admin/Sidebar.tsx` (gate do
+  `estoque_grupo` e do item com `module:` em `canSee` — **antes** do atalho de super_admin, senão o
+  toggle parece quebrado para quem contrata).
 - Hub de configurações com seções condicionais: `src/app/admin/configuracoes/_lib/catalog.ts`
   (`requires: hasStock`).
 - Integração suave com default ON: `src/services/stock-integration.ts`.
@@ -70,6 +77,7 @@ logs · dashboard · changelog.
 | `estruturas` | Espaços agendáveis | Aba "explorar" do portal, agendamentos |
 | `comunicacao` | WhatsApp/Chatwoot, automações, broadcast | Crons de mensageria (`daily-automations`, `process-messages`) |
 | `rh` | RH + escalas | (cadastro básico de equipe fica no core) |
+| `guarita` | Venda de estacionamento, tarifa por dia, turno, cadastro de placas | **Já implementado** (`hasGuarita`, default OFF), app `/porter`, `/admin/guarita`, campo `staff."vehiclePlate"` no cadastro de equipe. Sem cron |
 | `marketing` | Descontos, promos, pesquisas | (página comercial/marketing) |
 
 Exemplo do requisito original: "tem concierge mas não tem room service" = `concierge` ON, `fb` OFF.

@@ -10,6 +10,7 @@ import { PropertyService } from "@/services/property-service";
 import { Property } from "@/types/aura";
 import { cn } from "@/lib/utils";
 import { roleHome, isMobileOnlyRole } from "@/lib/role-routes";
+import { isModuleOn, type ModuleKey } from "@/lib/modules";
 import {
   Users, Home, Wrench,
   Sparkles, Building, ChevronDown, LogOut,
@@ -73,6 +74,8 @@ type NavItem = {
   icon: React.ElementType;
   href: string;
   roles: string[];
+  /** Item de módulo desligável — some do menu quando a propriedade não o tem. */
+  module?: ModuleKey;
   badge?: number | null;
   tag?: string;
   requireProperty?: boolean;
@@ -166,7 +169,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "manutencao",  label: "Manutenção",  icon: Wrench,       href: "/admin/maintenance/kanban",          roles: ["super_admin","admin","maintenance","manager"] },
       { id: "governanca",  label: "Governança",  icon: Sparkles,     href: "/admin/governance/kanban",           roles: ["super_admin","admin","governance","manager","reception"] },
       { id: "concierge",   label: "Concierge",   icon: Gift,         href: "/admin/concierge",                   roles: ["super_admin","admin","reception","manager"] },
-      { id: "guarita",     label: "Guarita",     icon: Car,          href: "/admin/guarita",                     roles: ["super_admin","admin","reception","manager"] },
+      { id: "guarita",     label: "Guarita",     icon: Car,          href: "/admin/guarita",                     roles: ["super_admin","admin","reception","manager"], module: "guarita" },
       { id: "pedidos_fb",  label: "Pedidos F&B", icon: Coffee,       href: "/admin/food-and-beverage/orders",    roles: ["super_admin","admin","reception","kitchen","manager"] },
     ],
   },
@@ -585,6 +588,9 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
   function canSee(item: NavItem) {
     if (!role) return false;
     if (item.requireProperty && !property) return false;
+    // Módulo desligado esconde o item de TODO MUNDO, super_admin incluído: quem
+    // contrata liga em Configurações → Módulos, não achando o item no menu.
+    if (item.module && !isModuleOn(property?.settings, item.module)) return false;
     if (role === "super_admin") return true;
     // Cargo SECUNDÁRIO conta — o RoleGuard e o requireAuth já contavam. Sem isso, quem
     // tem acesso adicional consegue abrir a página mas não vê o item no menu.
@@ -774,7 +780,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
         }}>
           {NAV_GROUPS.map((group) => {
             // Módulo Compras & Estoque desligado para a propriedade (SaaS): esconde o grupo.
-            if (group.id === "estoque_grupo" && property?.settings?.hasStock === false) return null;
+            if (group.id === "estoque_grupo" && !isModuleOn(property?.settings, "estoque")) return null;
             const visibleItems = group.items.filter(canSee);
             if (visibleItems.length === 0) return null;
             const isCollapsible = !!group.collapsible;

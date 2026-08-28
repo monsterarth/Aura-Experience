@@ -18,6 +18,15 @@ function resolveProperty(auth: any, requested: string | null): string | null {
   return ADMIN_TIER.includes(auth.staff.role) && requested ? requested : auth.staff.propertyId;
 }
 
+/**
+ * Módulo desligado responde 403 aqui, não só some do menu — esconder o item e
+ * deixar a rota aberta não é modularizar, é maquiar.
+ */
+async function moduleOff(propertyId: string) {
+  if (await GuaritaService.isEnabled(propertyId)) return null;
+  return NextResponse.json({ error: 'Módulo Guarita desligado nesta propriedade.', code: 'MODULE_OFF' }, { status: 403 });
+}
+
 export async function GET(req: Request) {
   const auth = await requireAuth(ROLES);
   if (isAuthError(auth)) return auth;
@@ -25,6 +34,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const propertyId = resolveProperty(auth, searchParams.get('propertyId'));
   if (!propertyId) return NextResponse.json({ error: 'Sem propriedade.' }, { status: 400 });
+
+  const off = await moduleOff(propertyId);
+  if (off) return off;
 
   try {
     return NextResponse.json(await GuaritaService.getDashboard(propertyId));
@@ -47,6 +59,9 @@ export async function POST(req: Request) {
 
   const propertyId = resolveProperty(auth, body?.propertyId ?? null);
   if (!propertyId) return NextResponse.json({ error: 'Sem propriedade.' }, { status: 400 });
+
+  const off = await moduleOff(propertyId);
+  if (off) return off;
 
   const actor = { id: auth.staff.id, name: auth.staff.fullName || 'Guarita' };
   const action: Action = body?.action;

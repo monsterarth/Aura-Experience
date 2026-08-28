@@ -6,6 +6,8 @@ import {
 import { Staff, UserRole } from "@/types/aura";
 import { StaffService } from "@/services/staff-service";
 import { useAuth } from "@/context/AuthContext";
+import { useProperty } from "@/context/PropertyContext";
+import { isModuleOn } from "@/lib/modules";
 import { toast } from "sonner";
 import { ImageUpload } from "./ImageUpload";
 import { useCloseGuard } from "@/lib/use-discard-guard";
@@ -38,6 +40,10 @@ const roleLabels: Record<string, string> = {
 
 export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) {
   const { userData } = useAuth();
+  const { currentProperty } = useProperty();
+  // A placa só serve à Guarita. Sem o módulo, o campo é ruído no cadastro —
+  // some da tela, mas o que já foi digitado continua no banco.
+  const hasGuarita = isModuleOn(currentProperty?.settings, "guarita");
   const [tab, setTab] = useState<Tab>("profile");
 
   // --- Profile tab ---
@@ -88,6 +94,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
       hireDate: staff.hireDate || "",
       bio: staff.bio || "",
       profilePictureUrl: staff.profilePictureUrl || "",
+      vehiclePlate: staff.vehiclePlate || "",
     });
   }, [staff]);
 
@@ -280,6 +287,19 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
                         className="w-full p-2.5 bg-background border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
                       />
                     </div>
+                    {hasGuarita && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold uppercase text-muted-foreground">Placa do veículo</label>
+                        <input
+                          value={formData.vehiclePlate || ""}
+                          onChange={e => setFormData({ ...formData, vehiclePlate: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7) })}
+                          placeholder="ABC1D23"
+                          autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+                          className="w-full p-2.5 bg-background border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none font-mono tracking-widest uppercase"
+                        />
+                        <p className="text-[11px] text-muted-foreground">A guarita reconhece o carro sozinha e não cobra.</p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-1">

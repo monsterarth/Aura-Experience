@@ -14,6 +14,15 @@ export const dynamic = "force-dynamic";
 const READ_ROLES: UserRole[] = ["super_admin", "admin", "manager", "reception"];
 const WRITE_ROLES: UserRole[] = ["super_admin", "admin", "manager", "reception"];
 
+/**
+ * Módulo desligado responde 403 aqui, não só some do menu — esconder o item e
+ * deixar a rota aberta não é modularizar, é maquiar.
+ */
+async function moduleOff(propertyId: string) {
+  if (await GuaritaService.isEnabled(propertyId)) return null;
+  return NextResponse.json({ error: "Módulo Guarita desligado nesta propriedade.", code: "MODULE_OFF" }, { status: 403 });
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(READ_ROLES);
   if (isAuthError(auth)) return auth;
@@ -22,6 +31,9 @@ export async function GET(request: NextRequest) {
   const propertyId = scopedPropertyId(auth, searchParams.get("propertyId"));
   if (!propertyId) return NextResponse.json({ error: "propertyId é obrigatório." }, { status: 400 });
   if (!supabaseAdmin) return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+
+  const off = await moduleOff(propertyId);
+  if (off) return off;
 
   const today = todayBrt();
   const from = searchParams.get("from") || today.slice(0, 8) + "01";
@@ -57,6 +69,9 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({} as any));
   const propertyId = scopedPropertyId(auth, body?.propertyId);
   if (!propertyId) return NextResponse.json({ error: "propertyId é obrigatório." }, { status: 400 });
+
+  const off = await moduleOff(propertyId);
+  if (off) return off;
 
   const actor = { id: auth.staff.id, name: auth.staff.fullName || "Recepção" };
 

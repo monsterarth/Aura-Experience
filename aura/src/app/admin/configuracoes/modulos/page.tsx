@@ -12,18 +12,28 @@ import { SaveBar } from "../_components/SaveBar";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { SettingRow } from "@/components/ui/SettingRow";
 import { Toggle } from "@/components/ui/Toggle";
-import { Blocks, Boxes } from "lucide-react";
+import { isModuleOn } from "@/lib/modules";
+import { Blocks, Boxes, Car } from "lucide-react";
 
-interface Draft { hasStock: boolean }
+interface Draft { hasStock: boolean; hasGuarita: boolean }
 
 export default function ModulosPage() {
   const { isSuperAdmin } = useAuth();
   const { draft, patch, dirty, saving, reset, save } = usePropertySection<Draft>((p) => ({
-    // Default LIGADO: `hasStock` só desliga quando é explicitamente false.
-    hasStock: (p.settings as { hasStock?: boolean })?.hasStock !== false,
+    // O default de cada módulo mora em src/lib/modules.ts — o mesmo que o menu
+    // e as rotas leem. Duas cópias da regra é como um módulo some do menu e
+    // continua aberto na API.
+    hasStock: isModuleOn(p.settings, "estoque"),
+    hasGuarita: isModuleOn(p.settings, "guarita"),
   }));
 
   if (!draft) return <SkeletonList rows={4} avatar={false} />;
+
+  const warning = !draft.hasStock
+    ? "Com o módulo desligado, o grupo Compras & Estoque some do menu para todos."
+    : !draft.hasGuarita
+      ? "Com a Guarita desligada, a página some do menu e o app do porteiro para de responder."
+      : undefined;
 
   return (
     <div className="max-w-2xl space-y-4">
@@ -41,13 +51,22 @@ export default function ModulosPage() {
         >
           <Toggle checked={draft.hasStock} disabled={!isSuperAdmin} label="Compras & Estoque" />
         </SettingRow>
+
+        <SettingRow
+          title="Guarita & Estacionamento"
+          icon={Car}
+          description="Venda de estacionamento na portaria, tarifa por dia, fechamento de turno e o app do porteiro. Só faz sentido em pousada que cobra estacionamento."
+          onClick={isSuperAdmin ? () => patch({ hasGuarita: !draft.hasGuarita }) : undefined}
+        >
+          <Toggle checked={draft.hasGuarita} disabled={!isSuperAdmin} label="Guarita & Estacionamento" />
+        </SettingRow>
       </SectionCard>
 
       {isSuperAdmin && (
         <SaveBar
           dirty={dirty} saving={saving} onReset={reset}
-          onSave={() => save((d) => ({ patch: { hasStock: d.hasStock } }))}
-          warning={draft.hasStock ? undefined : "Com o módulo desligado, o grupo Compras & Estoque some do menu para todos."}
+          onSave={() => save((d) => ({ patch: { hasStock: d.hasStock, hasGuarita: d.hasGuarita } }))}
+          warning={warning}
         />
       )}
     </div>

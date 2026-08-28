@@ -71,6 +71,19 @@ export default function PorterPage() {
       <main style={{ flex: 1, paddingTop: 16 }}>
         {g.loading ? (
           <div style={{ padding: 40, textAlign: "center", color: T.muted, fontSize: 14 }}>Carregando…</div>
+        ) : g.disabled ? (
+          // Módulo não contratado. Sem isto a tela abriria com o pátio vazio e
+          // o turno zerado — indistinguível de um dia parado.
+          <div style={{ padding: "48px 28px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke={T.muted2} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" />
+            </svg>
+            <div style={{ fontSize: 17, fontWeight: 800 }}>Guarita desligada</div>
+            <div style={{ fontSize: 13.5, color: T.muted, lineHeight: 1.55, maxWidth: 280 }}>
+              Esta pousada não tem o módulo de estacionamento ativo. Fale com a gerência — liga em
+              Configurações → Módulos.
+            </div>
+          </div>
         ) : tab === "painel" ? (
           <PainelTab g={g} onRegister={() => setTab("registro")} />
         ) : tab === "registro" ? (

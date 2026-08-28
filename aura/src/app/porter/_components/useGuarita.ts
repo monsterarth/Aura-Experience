@@ -39,12 +39,17 @@ export function useGuarita() {
   const [data, setData] = useState<GuaritaDashboard>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  /** Módulo não contratado nesta propriedade — pátio vazio mentiria. */
+  const [disabled, setDisabled] = useState(false);
 
   const load = useCallback(async () => {
     if (!propertyId) return;
     try {
       const res = await fetch(`/api/field/guarita?propertyId=${encodeURIComponent(propertyId)}`, { cache: "no-store" });
-      if (res.ok) setData(await res.json());
+      if (res.ok) { setData(await res.json()); setDisabled(false); return; }
+      // 403 do módulo é resposta, não falha: a tela precisa dizer o que houve
+      // em vez de mostrar um pátio vazio que ninguém sabe se é verdade.
+      if (res.status === 403) setDisabled(true);
     } catch {
       /* silencioso: a tela fica com o último estado bom em vez de piscar erro */
     } finally {
@@ -138,7 +143,7 @@ export function useGuarita() {
   }, [post, load]);
 
   return {
-    propertyId, userData, data, loading, busy, reload: load,
+    propertyId, userData, data, loading, busy, disabled, reload: load,
     lookup, registerEntry, updateMovement, registerExit, setRate, closeShift,
   };
 }

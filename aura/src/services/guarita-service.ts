@@ -7,6 +7,7 @@
 // A ideia que organiza tudo: a PLACA é cadastro, não anotação diária. Quando o
 // guarita digita, o sistema responde quem é — e a digitação vira conferência.
 import { supabaseAdmin } from "@/lib/supabase";
+import { isModuleOn } from "@/lib/modules";
 import { AuditService } from "./audit-service";
 import type {
   ParkingRate, ParkingShift, ParkingShiftSummary, PlateLookup,
@@ -46,9 +47,15 @@ const KIND_LABEL: Record<VehicleKind, string> = {
 export const GuaritaService = {
   // ── Contexto ───────────────────────────────────────────────────────────────
 
+  /**
+   * O módulo está contratado nesta propriedade?
+   *
+   * O default mora em `src/lib/modules.ts`, o mesmo que o menu lê — senão a
+   * Guarita some do menu e continua atendendo pela API.
+   */
   async isEnabled(propertyId: string): Promise<boolean> {
     const { data } = await db().from("properties").select("settings").eq("id", propertyId).maybeSingle();
-    return (data?.settings as any)?.hasGuarita === true;
+    return isModuleOn(data?.settings, "guarita");
   },
 
   // ── Tarifa do dia ──────────────────────────────────────────────────────────

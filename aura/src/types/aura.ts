@@ -1053,6 +1053,12 @@ export interface Staff {
   staysViewAtivas?: StaysViewMode;
   staysViewFuturas?: StaysViewMode;
   secondaryRoles?: UserRole[];
+  /**
+   * Placa do carro do colaborador (módulo Guarita). É o que faz o carro da
+   * equipe se identificar sozinho na portaria em vez de virar "visita".
+   * Normalizada sem hífen: ABC1D23.
+   */
+  vehiclePlate?: string;
 }
 
 // --- ESCALAS DE TRABALHO ---
