@@ -4,9 +4,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { serverError } from '@/lib/api-error';
+import { NOTIFICATION_VISIBLE_ROLES } from '@/lib/notifications';
 
 export async function PATCH(request: NextRequest) {
-    const auth = await requireAuth();
+    // Sem lista de cargos, qualquer funcionário logado (camareira, garçom, porteiro) podia
+    // zerar o sino da recepção. Os dois chamadores já são gated para o mesmo conjunto: o
+    // sino só renderiza para NOTIFICATION_VISIBLE_ROLES e /admin/comunicacao usa essa mesma
+    // lista no Sidebar. Importar a constante em vez de repetir os cargos aqui mantém
+    // src/lib/notifications.ts como fonte única de quem recebe o quê.
+    const auth = await requireAuth(NOTIFICATION_VISIBLE_ROLES);
     if (isAuthError(auth)) return auth;
 
     if (!supabaseAdmin) return NextResponse.json({ error: 'Server error' }, { status: 500 });
