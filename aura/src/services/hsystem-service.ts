@@ -594,7 +594,11 @@ export const HsystemService = {
     let q = db()
       .from("cabins")
       .select('id, number, name, "categoryId", "ignoreInOccupancy"')
-      .eq("propertyId", propertyId);
+      .eq("propertyId", propertyId)
+      // Cabana fora de operação não recebe reserva do canal. O filtro tinha
+      // saído daqui porque a coluna não existia no DEV — existia só em
+      // produção, que é onde a reserva de verdade cai.
+      .eq("active", true);
     if (categoryId) q = q.eq("categoryId", categoryId);
     const { data } = await q;
     return (data ?? []).filter((c) => !c.ignoreInOccupancy);
