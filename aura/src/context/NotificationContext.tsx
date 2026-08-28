@@ -101,10 +101,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     const msgChannel = supabase
       .channel(`notifctx_messages_${propertyId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `propertyId=eq.${propertyId}` }, (payload: any) => {
-        // A contagem só depende de mensagens recebidas; ignora o fluxo automatizado de saída e seus status
-        const direction = payload.new?.direction ?? payload.old?.direction;
-        if (direction !== 'inbound') return;
+      // Filtro por `direction`, não por `propertyId`: a contagem só depende de mensagem
+      // RECEBIDA. Filtrando aqui, as ~22 mil transições de status do fluxo de saída
+      // (queued→sent→delivered) param de atravessar RLS e websocket só para serem
+      // descartadas logo abaixo — eram ~60% do tráfego de realtime desta tabela.
+      // O escopo de propriedade não se perde: a policy `property_scoped_all` de
+      // `messages` já limita o que o realtime entrega. A conferência cobre o
+      // super_admin, o único que enxerga as duas propriedades.
+      // DELETE continua fora: com replica identity DEFAULT só a PK viaja, então não
+      // casa o filtro — mesmo efeito de antes, quando `direction` vinha undefined.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: 'direction=eq.inbound' }, (payload: any) => {
+        const pid = payload.new?.propertyId ?? payload.old?.propertyId;
+        if (pid && pid !== propertyId) return;
         fetchAll();
       })
       .subscribe();

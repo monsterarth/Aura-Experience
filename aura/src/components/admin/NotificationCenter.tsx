@@ -522,10 +522,14 @@ export function NotificationCenter() {
 
     const msgChannel = supabase
       .channel(`notif_messages_${propertyId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `propertyId=eq.${propertyId}` }, (payload: any) => {
-        // Só reage a mensagens recebidas; ignora o fluxo automatizado de saída (e seus status)
-        const direction = payload.new?.direction ?? payload.old?.direction;
-        if (direction !== 'inbound') return;
+      // Filtro por `direction` em vez de `propertyId` — a explicação longa está no
+      // NotificationContext. Resumo: só mensagem RECEBIDA acorda o sino, então deixar
+      // o fluxo de saída atravessar até o navegador era trabalho puro de descarte.
+      // A policy `property_scoped_all` segura a fronteira entre propriedades; a
+      // conferência abaixo existe para o super_admin, que enxerga as duas.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: 'direction=eq.inbound' }, (payload: any) => {
+        const pid = payload.new?.propertyId ?? payload.old?.propertyId;
+        if (pid && pid !== propertyId) return;
         fetchWhatsapp();
       })
       .subscribe();
