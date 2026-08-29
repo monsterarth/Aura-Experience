@@ -49,3 +49,25 @@ export function isLocalNumberValid(country: string, localNumber: string): boolea
   if (c === "55") return n.length === 10 || n.length === 11;
   return n.length >= 6;
 }
+
+/**
+ * O número está mandável pelo WhatsApp? Devolve o motivo quando não está.
+ *
+ * NÃO conserta nada — o auto-55 escondido continua fora de questão (ver o topo
+ * deste arquivo). Serve para a falha dizer a verdade: 22 mensagens morreram como
+ * "Bad Request" ao longo de cinco meses porque o número tinha ido sem o DDI, e
+ * ninguém ligou uma coisa à outra. Com isto o erro guardado já nomeia a causa.
+ *
+ * Passa intacto o que não é telefone nosso: internacional real (54 Argentina,
+ * 595 Paraguai, 49 Alemanha) e JID de grupo do WhatsApp (18 dígitos, começa com
+ * 120363). Só barra o que é reconhecidamente inenviável.
+ */
+export function whatsappNumberProblem(raw: string | null | undefined): string | null {
+  const d = (raw || "").replace(/\D/g, "");
+  if (!d) return "sem telefone";
+  if (d.length === 10 || d.length === 11) {
+    return `telefone sem o DDI (${d}) — falta o 55 no cadastro`;
+  }
+  if (d.length < 10) return `telefone curto demais (${d})`;
+  return null;
+}

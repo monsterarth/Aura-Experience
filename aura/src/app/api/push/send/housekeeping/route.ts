@@ -13,12 +13,14 @@ async function fanOut(
   propertyId: string,
   payload: Parameters<typeof sendPushNotification>[1]
 ) {
-  const { data: subs } = await supabaseAdmin!
+  const { data: subs, error } = await supabaseAdmin!
     .from("push_subscriptions")
     .select("endpoint, p256dh, auth")
     .in("staffId", staffIds)
     .eq("propertyId", propertyId);
 
+  // Falha de consulta virava `data: null`, indistinguível de "ninguém inscrito".
+  if (error) console.error("[push/send/housekeeping fanOut]", error.message);
   if (!subs?.length) return;
 
   await Promise.all(
@@ -34,12 +36,13 @@ async function fanOutByRole(
   roles: string[],
   payload: Parameters<typeof sendPushNotification>[1]
 ) {
-  const { data: subs } = await supabaseAdmin!
+  const { data: subs, error } = await supabaseAdmin!
     .from("push_subscriptions")
     .select("endpoint, p256dh, auth")
     .eq("propertyId", propertyId)
     .in("role", roles);
 
+  if (error) console.error("[push/send/housekeeping fanOutByRole]", error.message);
   if (!subs?.length) return;
 
   await Promise.all(

@@ -4,6 +4,7 @@ import { WhatsAppMessage } from "@/types/aura";
 import { parseEvolutionError, isSessionDownError } from "@/lib/evolution-error";
 import { PropertySecretsService } from "@/services/property-secrets-service";
 import { isSafeMode, logSuppressedSend } from "@/lib/safe-mode";
+import { whatsappNumberProblem } from "@/lib/phone";
 import { WhatsAppHealthService } from "@/services/whatsapp-health-service";
 
 async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
@@ -149,6 +150,26 @@ export async function GET(request: Request) {
             })
             .eq("id", msg.id);
           successCount++;
+          continue;
+        }
+
+        // Número que a Evolution vai recusar de qualquer jeito. Falha JÁ, com a
+        // causa por extenso: cadastro sem DDI não se conserta em três tentativas,
+        // e o "Bad Request" genérico foi o que escondeu 22 falhas por cinco meses.
+        // Consertar o número aqui está fora de questão — ver src/lib/phone.ts.
+        const numberProblem = whatsappNumberProblem(msg.to);
+        if (numberProblem) {
+          console.error(`[process-messages] ${numberProblem} (msg ${msg.id})`);
+          await supabaseAdmin
+            .from("messages")
+            .update({
+              status: "failed",
+              attempts: (msg.attempts || 0) + 1,
+              lastAttemptAt: new Date().toISOString(),
+              errorMessage: numberProblem,
+            })
+            .eq("id", msg.id);
+          failCount++;
           continue;
         }
 

@@ -23,12 +23,15 @@ export async function POST(req: Request) {
   const propertyId: string = record?.propertyId;
   if (!propertyId) return NextResponse.json({ ok: true });
 
-  const { data: subs } = await supabaseAdmin!
+  const { data: subs, error } = await supabaseAdmin!
     .from("push_subscriptions")
     .select("endpoint, p256dh, auth")
     .eq("propertyId", propertyId)
     .in("role", ["houseman", "admin", "manager", "super_admin"]);
 
+  // Falha de consulta virava `data: null`, indistinguível de "ninguém inscrito"
+  // — foi assim que a tabela ficou meses sem existir sem ninguém perceber.
+  if (error) console.error("[push/send/concierge]", error.message);
   if (!subs?.length) return NextResponse.json({ ok: true });
 
   await Promise.all(

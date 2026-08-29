@@ -29,19 +29,22 @@ export async function POST(req: Request) {
 
   if (assignedTo.length > 0) {
     // Notifica apenas os técnicos assignados
-    const { data } = await supabaseAdmin!
+    const { data, error } = await supabaseAdmin!
       .from("push_subscriptions")
       .select("endpoint, p256dh, auth")
       .in("staffId", assignedTo)
       .eq("propertyId", propertyId);
+    // Falha de consulta virava lista vazia, indistinguível de "ninguém inscrito".
+    if (error) console.error("[push/send/maintenance assignados]", error.message);
     subs = data ?? [];
   } else {
     // Sem assignação: notifica todos os técnicos/manutenção da propriedade
-    const { data } = await supabaseAdmin!
+    const { data, error } = await supabaseAdmin!
       .from("push_subscriptions")
       .select("endpoint, p256dh, auth")
       .eq("propertyId", propertyId)
       .in("role", ["maintenance", "technician", "admin", "manager", "super_admin"]);
+    if (error) console.error("[push/send/maintenance por cargo]", error.message);
     subs = data ?? [];
   }
 

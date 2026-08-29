@@ -14,12 +14,15 @@ async function cleanExpired(endpoint: string) {
 /** Envia para as subscriptions de um conjunto de staff dentro de uma propriedade. */
 export async function fanOut(staffIds: string[], propertyId: string, payload: PushPayload) {
   if (!staffIds.length) return;
-  const { data: subs } = await supabaseAdmin!
+  const { data: subs, error } = await supabaseAdmin!
     .from('push_subscriptions')
     .select('endpoint, p256dh, auth')
     .in('staffId', staffIds)
     .eq('propertyId', propertyId);
 
+  // Sem isto o push some sem deixar rastro: a tabela não existiu por meses em
+  // produção e o erro caía num `data: null` indistinguível de "ninguém inscrito".
+  if (error) { console.error('[push/fanOut]', error.message); return; }
   if (!subs?.length) return;
 
   await Promise.all(
@@ -32,12 +35,13 @@ export async function fanOut(staffIds: string[], propertyId: string, payload: Pu
 
 /** Envia para todas as subscriptions de um conjunto de roles dentro de uma propriedade. */
 export async function fanOutByRole(propertyId: string, roles: string[], payload: PushPayload) {
-  const { data: subs } = await supabaseAdmin!
+  const { data: subs, error } = await supabaseAdmin!
     .from('push_subscriptions')
     .select('endpoint, p256dh, auth')
     .eq('propertyId', propertyId)
     .in('role', roles);
 
+  if (error) { console.error('[push/fanOutByRole]', error.message); return; }
   if (!subs?.length) return;
 
   await Promise.all(
