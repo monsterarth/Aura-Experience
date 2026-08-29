@@ -26,6 +26,11 @@ export interface GuaritaDashboard {
   events: { id: string; title: string; startDate: string; endDate: string }[];
 }
 
+export interface LinkTargets {
+  staff: { id: string; name: string; role: string; plate: string | null }[];
+  suppliers: { id: string; name: string }[];
+}
+
 const EMPTY: GuaritaDashboard = {
   date: "", rate: null, ratePresets: [30, 50, 80, 100, 150], shift: null, summary: null,
   patio: [], pendingNsu: [], arrivals: [], departures: [], housed: [], events: [],
@@ -41,6 +46,8 @@ export function useGuarita() {
   const [busy, setBusy] = useState(false);
   /** Módulo não contratado nesta propriedade — pátio vazio mentiria. */
   const [disabled, setDisabled] = useState(false);
+  /** Equipe e fornecedores para o guarita apontar. Carrega sob demanda. */
+  const [targets, setTargets] = useState<LinkTargets | null>(null);
 
   const load = useCallback(async () => {
     if (!propertyId) return;
@@ -71,6 +78,17 @@ export function useGuarita() {
     if (!r.ok) throw new Error(r.error || "Não consegui registrar. Tente de novo.");
     return r.data;
   }, [propertyId]);
+
+  // Só busca quando o guarita escolhe Equipe ou Fornecedor — a lista não tem
+  // por que pesar no painel de quem só vai registrar um cliente.
+  const loadTargets = useCallback(async () => {
+    if (targets) return targets;
+    try {
+      const r = await postFieldAction("/api/field/guarita", { propertyId, action: "link_targets" });
+      if (r.ok) { setTargets(r.data as LinkTargets); return r.data as LinkTargets; }
+    } catch { /* sem lista, a tela cai no nome digitado */ }
+    return null;
+  }, [propertyId, targets]);
 
   const lookup = useCallback(async (plate: string): Promise<PlateLookup | null> => {
     try {
@@ -143,7 +161,7 @@ export function useGuarita() {
   }, [post, load]);
 
   return {
-    propertyId, userData, data, loading, busy, disabled, reload: load,
+    propertyId, userData, data, loading, busy, disabled, targets, loadTargets, reload: load,
     lookup, registerEntry, updateMovement, registerExit, setRate, closeShift,
   };
 }

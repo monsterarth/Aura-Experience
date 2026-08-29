@@ -35,6 +35,25 @@ export async function GET(request: NextRequest) {
   const off = await moduleOff(propertyId);
   if (off) return off;
 
+  // O cadastro de placas tem paginação e filtro próprios: sai numa chamada
+  // separada para a tela do painel não crescer a cada busca digitada.
+  if (searchParams.get("section") === "vehicles") {
+    try {
+      const [list, targets] = await Promise.all([
+        GuaritaService.listVehicles(propertyId, {
+          search: searchParams.get("search") ?? undefined,
+          kind: (searchParams.get("kind") as any) ?? "all",
+          status: (searchParams.get("status") as any) ?? "all",
+        }),
+        GuaritaService.listLinkTargets(propertyId),
+      ]);
+      return NextResponse.json({ ...list, targets });
+    } catch (e) {
+      console.error("[admin/guarita vehicles]", e);
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    }
+  }
+
   const today = todayBrt();
   const from = searchParams.get("from") || today.slice(0, 8) + "01";
   const to = searchParams.get("to") || today;
@@ -84,6 +103,23 @@ export async function POST(request: NextRequest) {
         actor,
       );
       return NextResponse.json({ ok: true, rate });
+    }
+
+    if (body.action === "upsert_vehicle") {
+      if (!body.plate) return NextResponse.json({ error: "Informe a placa." }, { status: 400 });
+      const vehicle = await GuaritaService.upsertVehicle(propertyId, {
+        plate: body.plate,
+        kind: body.kind,
+        model: body.model ?? null,
+        color: body.color ?? null,
+        ownerName: body.ownerName ?? null,
+        ownerPhone: body.ownerPhone ?? null,
+        marketingOptIn: body.marketingOptIn === true,
+        staffId: body.staffId ?? null,
+        supplierId: body.supplierId ?? null,
+        notes: body.notes ?? null,
+      }, actor);
+      return NextResponse.json({ ok: true, vehicle });
     }
 
     if (body.action === "set_vehicle_status") {

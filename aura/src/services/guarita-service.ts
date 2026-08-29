@@ -264,6 +264,22 @@ export const GuaritaService = {
       out.cabinName = (cabin as any)?.name ?? null;
     }
 
+    // Vínculo já gravado no cadastro. Sem isto o carro do fornecedor volta a ser
+    // um nome digitado toda vez, mesmo depois de cadastrado.
+    if (vehicle?.staffId) {
+      const { data: member } = await db()
+        .from("staff").select('"fullName"').eq("id", vehicle.staffId).maybeSingle();
+      out.staffName = (member as any)?.fullName ?? out.staffName ?? null;
+    }
+    if (vehicle?.supplierId) {
+      const { data: supplier } = await db()
+        .from("suppliers").select("name").eq("id", vehicle.supplierId).maybeSingle();
+      out.supplierName = (supplier as any)?.name ?? null;
+    }
+
+    // Última cartada: a placa está no cadastro da equipe, mesmo sem veículo
+    // cadastrado. É como o carro do funcionário se identifica sem ninguém
+    // ter passado pela guarita antes.
     if (out.source === "none") {
       const { data: staffRows } = await db()
         .from("staff").select('id, "fullName", "vehiclePlate"')
@@ -272,6 +288,7 @@ export const GuaritaService = {
       if (member) {
         out.source = "staff";
         out.kind = "staff";
+        out.staffId = member.id;
         out.staffName = member.fullName;
       }
     }
@@ -280,6 +297,75 @@ export const GuaritaService = {
   },
 
   // ── Cadastro ───────────────────────────────────────────────────────────────
+
+  /**
+   * O cadastro de placas, para a tela do admin.
+   *
+   * A ideia que organiza o módulo é "a placa é cadastro, não anotação do dia" —
+   * mas o cadastro não tinha tela: só as placas MARCADAS apareciam. Sem isto
+   * ninguém corrige um dono errado nem descobre por que um carro é isento.
+   */
+  async listVehicles(
+    propertyId: string,
+    opts: { search?: string; kind?: VehicleKind | "all"; status?: VehicleStatus | "all"; limit?: number } = {},
+  ): Promise<{ vehicles: Vehicle[]; total: number }> {
+    let q = db()
+      .from("vehicles").select("*", { count: "exact" })
+      .eq("propertyId", propertyId);
+
+    if (opts.kind && opts.kind !== "all") q = q.eq("kind", opts.kind);
+    if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
+
+    const search = (opts.search ?? "").trim();
+    if (search) {
+      // A placa é buscada NORMALIZADA (quem digita "abc-1d23" quer o mesmo
+      // carro); nome e modelo aceitam pedaço solto.
+      const plate = normalizePlate(search);
+      // A vírgula separa os termos do `or` e o parêntese o fecha: deixar passar
+      // é injeção de filtro, não busca. O `%` sai para não virar curinga solto.
+      const like = `%${search.replace(/[%,()]/g, "")}%`;
+      q = q.or(`plate.ilike.%${plate}%,ownerName.ilike.${like},model.ilike.${like}`);
+    }
+
+    const { data, count } = await q
+      .order("updatedAt", { ascending: false })
+      .limit(opts.limit ?? 100);
+
+    return { vehicles: (data ?? []) as Vehicle[], total: count ?? 0 };
+  },
+
+  /**
+   * Com quem uma placa pode ser vinculada: gente da equipe e fornecedores.
+   *
+   * `suppliers` é tabela do módulo de Estoque. A dependência é SUAVE de
+   * propósito — pousada com Guarita e sem Estoque devolve lista vazia e a tela
+   * cai no nome digitado, que é como funciona hoje. Módulo não pode depender
+   * duro de tabela de outro módulo (docs/MODULARIZATION.md, regra 2).
+   */
+  async listLinkTargets(propertyId: string): Promise<{
+    staff: { id: string; name: string; role: string; plate: string | null }[];
+    suppliers: { id: string; name: string }[];
+  }> {
+    const { data: property } = await db()
+      .from("properties").select("settings").eq("id", propertyId).maybeSingle();
+    const hasStock = isModuleOn(property?.settings, "estoque");
+
+    const [staffRes, supplierRes] = await Promise.all([
+      db().from("staff").select('id, "fullName", role, "vehiclePlate"')
+        .eq("propertyId", propertyId).eq("active", true).order("fullName"),
+      hasStock
+        ? db().from("suppliers").select("id, name").eq("propertyId", propertyId).eq("active", true).order("name")
+        : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    ]);
+
+    return {
+      staff: (staffRes.data ?? []).map((r: any) => ({
+        id: r.id, name: r.fullName, role: r.role, plate: r.vehiclePlate ?? null,
+      })),
+      suppliers: ((supplierRes.data ?? []) as { id: string; name: string }[]).map(r => ({ id: r.id, name: r.name })),
+    };
+  },
+
 
   async upsertVehicle(
     propertyId: string,
@@ -387,6 +473,10 @@ export const GuaritaService = {
       cardBrand?: string | null;
       nsu?: string | null;
       stayId?: string | null;
+      /** Vínculo apontado pelo guarita quando o tipo é Equipe. */
+      staffId?: string | null;
+      /** Idem para Fornecedor — id da tabela `suppliers`. */
+      supplierId?: string | null;
       ownerName?: string | null;
       ownerPhone?: string | null;
       marketingOptIn?: boolean;
@@ -440,6 +530,10 @@ export const GuaritaService = {
       ownerPhone: input.ownerPhone ?? undefined,
       marketingOptIn: input.marketingOptIn,
       ...(guestId && input.kind === "guest" ? { guestId } : {}),
+      // Mesmo princípio do hóspede: o vínculo apontado no portão fica gravado, e
+      // na próxima entrada o sistema já responde de quem é o carro.
+      ...(input.staffId && input.kind === "staff" ? { staffId: input.staffId } : {}),
+      ...(input.supplierId && input.kind === "supplier" ? { supplierId: input.supplierId } : {}),
     }, actor);
 
     const row = {

@@ -46,7 +46,7 @@ export async function GET(req: Request) {
   }
 }
 
-type Action = 'lookup' | 'entry' | 'update' | 'exit' | 'close_shift' | 'set_rate';
+type Action = 'lookup' | 'entry' | 'update' | 'exit' | 'close_shift' | 'set_rate' | 'link_targets';
 
 export async function POST(req: Request) {
   const auth = await requireAuth(ROLES);
@@ -67,6 +67,12 @@ export async function POST(req: Request) {
   const action: Action = body?.action;
 
   try {
+    // Quem o guarita pode apontar quando o tipo é Equipe ou Fornecedor. Sai sob
+    // demanda (só quando ele escolhe o tipo) para não pesar o painel.
+    if (action === 'link_targets') {
+      return NextResponse.json(await GuaritaService.listLinkTargets(propertyId));
+    }
+
     if (action === 'lookup') {
       if (!body.plate) return NextResponse.json({ error: 'Informe a placa.' }, { status: 400 });
       return NextResponse.json(await GuaritaService.lookupPlate(propertyId, body.plate));
@@ -84,6 +90,8 @@ export async function POST(req: Request) {
         cardBrand: body.cardBrand ?? null,
         nsu: body.nsu ?? null,
         stayId: body.stayId ?? null,
+        staffId: body.staffId ?? null,
+        supplierId: body.supplierId ?? null,
         ownerName: body.ownerName ?? null,
         ownerPhone: body.ownerPhone ?? null,
         marketingOptIn: body.marketingOptIn === true,

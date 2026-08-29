@@ -5,7 +5,7 @@
 // O guarita digita e o sistema responde quem é: hóspede (isento, um toque),
 // cliente (cobra a tarifa do dia) ou veículo em atenção (alerta antes de tudo).
 // A digitação vira conferência.
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { T, KIND, KIND_ORDER, PAYMENTS, CARD_BRANDS, money, displayPlate, normalizePlate } from "./guarita-ui";
 import { PlateScanner } from "./PlateScanner";
 
@@ -24,12 +24,45 @@ const SCANNER_READY: boolean = false;
 import type { GuaritaState } from "./useGuarita";
 import type { PlateLookup, VehicleKind } from "@/types/aura";
 
+/** Cargo por extenso — o guarita conhece a pessoa, não a chave do sistema. */
+const ROLE_LABEL: Record<string, string> = {
+  super_admin: "Administração", admin: "Administração", manager: "Gerência",
+  reception: "Recepção", governance: "Governanta", maid: "Camareira",
+  maintenance: "Manutenção", technician: "Manutenção", kitchen: "Cozinha",
+  waiter: "Garçom", porter: "Portaria", houseman: "Mensageiro",
+  marketing: "Marketing", compras: "Compras", director: "Diretoria",
+};
+
+const pickedStyle: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 11, padding: "12px 13px", borderRadius: 14,
+  background: T.glass2, border: `1px solid ${T.border2}`, cursor: "pointer",
+  fontFamily: "inherit", textAlign: "left", width: "100%", color: T.text,
+};
+const rowStyle: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 11, padding: "11px 13px", borderRadius: 13,
+  background: T.card, border: `1px solid ${T.border}`, cursor: "pointer",
+  fontFamily: "inherit", textAlign: "left", minHeight: 52, color: T.text,
+};
+const searchStyle: React.CSSProperties = {
+  height: 48, borderRadius: 13, background: T.card, border: `1px solid ${T.border}`,
+  color: T.text, fontSize: 16, padding: "0 14px", fontFamily: "inherit", boxSizing: "border-box",
+};
+const waitStyle: React.CSSProperties = {
+  padding: 14, textAlign: "center", border: `1px dashed ${T.border2}`,
+  borderRadius: 13, color: T.muted2, fontSize: 12.5,
+};
+const linkStyle: React.CSSProperties = {
+  background: "none", border: "none", color: T.g2, fontSize: 12.5, fontWeight: 700,
+  cursor: "pointer", fontFamily: "inherit", padding: "6px 0", textAlign: "left",
+};
+
 export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void }) {
   const [plate, setPlate] = useState("");
   const [lookup, setLookup] = useState<PlateLookup | null>(null);
   const [searching, setSearching] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [ackAlert, setAckAlert] = useState(false);
+
 
   // Campos do registro
   const [kind, setKind] = useState<VehicleKind>("customer");
@@ -43,9 +76,22 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
   // Hóspede/visita cuja placa o sistema ainda não conhece: o guarita aponta a
   // estadia e o vínculo passa a existir para sempre.
   const [stayId, setStayId] = useState<string | null>(null);
+  const [staffId, setStaffId] = useState<string | null>(null);
+  const [supplierId, setSupplierId] = useState<string | null>(null);
+  const [pickQuery, setPickQuery] = useState("");
+  /** Fornecedor que não está no cadastro: cai no nome digitado, como antes. */
+  const [freeSupplier, setFreeSupplier] = useState(false);
   const [stayQuery, setStayQuery] = useState("");
   // Todo veículo entra cobrável; quem dispensa é o guarita.
   const [exempt, setExempt] = useState(false);
+
+  // A lista de equipe/fornecedores só é buscada quando o tipo escolhido pede um
+  // vínculo — e o hook fica aqui, acima de qualquer return, porque a ordem dos
+  // hooks não pode mudar entre renders.
+  const loadTargets = g.loadTargets;
+  useEffect(() => {
+    if (kind === "staff" || kind === "supplier") void loadTargets();
+  }, [kind, loadTargets]);
 
   const rate = g.data.rate;
   const clean = normalizePlate(plate);
@@ -53,6 +99,7 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
   const reset = () => {
     setPlate(""); setLookup(null); setAckAlert(false);
     setKind("customer"); setAmount(""); setMethod(null); setBrand("");
+    setStaffId(null); setSupplierId(null); setPickQuery(""); setFreeSupplier(false);
     setNsu(""); setOwnerName(""); setOwnerPhone(""); setOptIn(false);
     setStayId(null); setStayQuery(""); setExempt(false);
   };
@@ -82,6 +129,8 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
       cardBrand: value > 0 && PAYMENTS.find(p => p.id === method)?.card ? brand || null : null,
       nsu: value > 0 && PAYMENTS.find(p => p.id === method)?.card ? nsu || null : null,
       stayId: stayId ?? lookup?.stayId ?? null,
+      staffId: kind === "staff" ? (staffId ?? lookup?.staffId ?? null) : null,
+      supplierId: kind === "supplier" ? supplierId : null,
       ownerName: ownerName || null,
       ownerPhone: ownerPhone || null,
       marketingOptIn: optIn,
@@ -256,8 +305,21 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
     return (h.cabinName ?? "").toLowerCase().includes(q) || h.guestName.toLowerCase().includes(q);
   });
 
+  // Equipe e fornecedor pedem o mesmo que hóspede pede: um dono. O vínculo
+  // apontado aqui fica gravado no cadastro da placa, e na próxima entrada o
+  // sistema já responde de quem é o carro.
+  const needsStaff = kind === "staff" && !lookup.staffId && !lookup.vehicle?.staffId;
+  const needsSupplier = kind === "supplier" && !lookup.vehicle?.supplierId && !freeSupplier;
+  const targets = g.targets;
+  const chosenStaff = targets?.staff.find(x => x.id === staffId) ?? null;
+  const chosenSupplier = targets?.suppliers.find(x => x.id === supplierId) ?? null;
+
   const value = parseFloat((amount || "0").replace(",", "."));
-  const canSubmit = (exempt || (value > 0 && !!method)) && (!needsStay || !!stayId);
+  const canSubmit =
+    (exempt || (value > 0 && !!method)) &&
+    (!needsStay || !!stayId) &&
+    (!needsStaff || !!staffId) &&
+    (!needsSupplier || !!supplierId);
 
   return (
     <div style={{ padding: "8px 16px 16px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -370,11 +432,87 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
         </div>
       )}
 
-      {/* Fornecedor se identifica pelo nome, pague ou não */}
-      {kind === "supplier" && exempt && (
+      {/* Quem da equipe */}
+      {needsStaff && (
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-          {label("Fornecedor")}
-          {input({ value: ownerName, onChange: e => setOwnerName(e.target.value), placeholder: "Nome da empresa" })}
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+            {label("Quem da equipe?")}
+            {!chosenStaff && <span style={{ fontSize: 11, color: T.amber, fontWeight: 700 }}>obrigatório</span>}
+          </div>
+          {chosenStaff ? (
+            <button onClick={() => { setStaffId(null); setPickQuery(""); }} style={pickedStyle}>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 15, fontWeight: 800 }}>{chosenStaff.name}</span>
+                <span style={{ display: "block", fontSize: 12.5, color: T.muted }}>{ROLE_LABEL[chosenStaff.role] ?? chosenStaff.role}</span>
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.muted, flexShrink: 0 }}>trocar</span>
+            </button>
+          ) : !targets ? (
+            <div style={waitStyle}>Carregando a equipe…</div>
+          ) : (
+            <>
+              {targets.staff.length > 6 && (
+                <input value={pickQuery} onChange={e => setPickQuery(e.target.value)} placeholder="Buscar pelo nome" style={searchStyle} />
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
+                {targets.staff
+                  .filter(x => !pickQuery.trim() || x.name.toLowerCase().includes(pickQuery.trim().toLowerCase()))
+                  .map(x => (
+                    <button key={x.id} onClick={() => setStaffId(x.id)} style={rowStyle}>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.name}</span>
+                        <span style={{ display: "block", fontSize: 12, color: T.muted }}>{ROLE_LABEL[x.role] ?? x.role}</span>
+                      </span>
+                      {x.plate && (
+                        <span style={{ fontSize: 11, fontFamily: T.mono, color: T.muted2, flexShrink: 0 }}>{displayPlate(x.plate)}</span>
+                      )}
+                    </button>
+                  ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Qual fornecedor — do cadastro de Compras, com saída para o nome digitado */}
+      {kind === "supplier" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+            {label("Qual fornecedor?")}
+            {needsSupplier && !chosenSupplier && <span style={{ fontSize: 11, color: T.amber, fontWeight: 700 }}>obrigatório</span>}
+          </div>
+
+          {chosenSupplier ? (
+            <button onClick={() => { setSupplierId(null); setPickQuery(""); }} style={pickedStyle}>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 800 }}>{chosenSupplier.name}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.muted, flexShrink: 0 }}>trocar</span>
+            </button>
+          ) : freeSupplier || (targets && targets.suppliers.length === 0) ? (
+            <>
+              {input({ value: ownerName, onChange: e => setOwnerName(e.target.value), placeholder: "Nome da empresa" })}
+              {targets && targets.suppliers.length > 0 && (
+                <button onClick={() => { setFreeSupplier(false); setOwnerName(""); }} style={linkStyle}>Escolher do cadastro</button>
+              )}
+            </>
+          ) : !targets ? (
+            <div style={waitStyle}>Carregando fornecedores…</div>
+          ) : (
+            <>
+              {targets.suppliers.length > 6 && (
+                <input value={pickQuery} onChange={e => setPickQuery(e.target.value)} placeholder="Buscar fornecedor" style={searchStyle} />
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                {targets.suppliers
+                  .filter(x => !pickQuery.trim() || x.name.toLowerCase().includes(pickQuery.trim().toLowerCase()))
+                  .map(x => (
+                    <button key={x.id} onClick={() => setSupplierId(x.id)} style={rowStyle}>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.name}</span>
+                    </button>
+                  ))}
+              </div>
+              <button onClick={() => setFreeSupplier(true)} style={linkStyle}>Não está na lista — digitar o nome</button>
+            </>
+          )}
         </div>
       )}
 

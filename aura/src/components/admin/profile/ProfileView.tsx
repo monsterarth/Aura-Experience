@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { Staff, StaffSchedule, StaffScheduleOverride, ScheduleCheckpoint } from "@/types/aura";
 import { useAuth } from "@/context/AuthContext";
+import { useProperty } from "@/context/PropertyContext";
+import { isModuleOn } from "@/lib/modules";
 import { StaffService } from "@/services/staff-service";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { PersonalScheduleCard } from "./PersonalScheduleCard";
@@ -73,10 +75,12 @@ interface Props {
 }
 
 export function ProfileView({ staffId, isOwnProfile, profileBasePath = "/admin/perfil" }: Props) {
+  const { currentProperty } = useProperty();
+  const hasGuarita = isModuleOn(currentProperty?.settings, "guarita");
   const { userData: authUser, refreshUserData } = useAuth();
   const [staff, setStaff] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
-  const [editingField, setEditingField] = useState<"fullName" | "bio" | null>(null);
+  const [editingField, setEditingField] = useState<"fullName" | "bio" | "vehiclePlate" | null>(null);
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [weekActivityCount, setWeekActivityCount] = useState<number | null>(null);
@@ -162,7 +166,7 @@ export function ProfileView({ staffId, isOwnProfile, profileBasePath = "/admin/p
       .finally(() => setLogsLoading(false));
   }, [staffId]);
 
-  const startEdit = (field: "fullName" | "bio") => {
+  const startEdit = (field: "fullName" | "bio" | "vehiclePlate") => {
     setEditingField(field);
     setEditValue(staff?.[field] ?? "");
   };
@@ -383,6 +387,56 @@ export function ProfileView({ staffId, isOwnProfile, profileBasePath = "/admin/p
               </p>
             )}
           </div>
+
+          {/* Placa — só existe quando a pousada tem Guarita. É onde o próprio
+              funcionário cadastra o carro: até aqui, só um admin conseguia,
+              pela tela de Equipe, e cargo de celular nem chegava lá. */}
+          {hasGuarita && (
+            <div className="mb-4">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <span className="text-[11px] font-extrabold text-muted-foreground uppercase tracking-widest">Placa do veículo</span>
+                {isOwnProfile && editingField !== "vehiclePlate" && (
+                  <button onClick={() => startEdit("vehiclePlate")} className="text-muted-foreground opacity-50 hover:opacity-100 p-0.5 flex transition-opacity">
+                    <Pencil size={11} />
+                  </button>
+                )}
+              </div>
+              {editingField === "vehiclePlate" ? (
+                <div>
+                  <input
+                    autoFocus value={editValue}
+                    onChange={e => setEditValue(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7))}
+                    placeholder="ABC1D23" maxLength={7}
+                    autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+                    className="w-full bg-muted border border-border rounded-xl px-3 py-2.5 text-[15px] font-mono tracking-[0.15em] text-foreground outline-none"
+                  />
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={saveField} disabled={saving}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white"
+                      style={{ background: "linear-gradient(135deg,#9b6dff,#4ec9d4)" }}
+                    >
+                      {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Salvar
+                    </button>
+                    <button onClick={() => setEditingField(null)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-muted border border-border text-muted-foreground">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : staff.vehiclePlate ? (
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1.5 bg-muted border border-border rounded-lg text-[15px] font-mono tracking-[0.15em] text-foreground">
+                    {staff.vehiclePlate.length === 7 ? `${staff.vehiclePlate.slice(0, 3)}-${staff.vehiclePlate.slice(3)}` : staff.vehiclePlate}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">a guarita reconhece e não cobra</span>
+                </div>
+              ) : (
+                <p className="text-[13px] text-muted-foreground italic">
+                  {isOwnProfile ? "Cadastre a placa e a guarita reconhece seu carro na entrada." : "Sem placa cadastrada."}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Contatos */}
           {(staff.email || staff.phone || staff.birthDate) && (

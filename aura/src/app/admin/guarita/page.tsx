@@ -2,7 +2,7 @@
 
 // /admin/guarita — o lado da recepção e da gestão: tarifa do dia, o número do
 // período (que substitui a reserva-fantasma no HMAX), turnos fechados e as
-// placas marcadas. Ver docs/GUARITA.md.
+// placas marcadas, e o CADASTRO de placas. Ver docs/GUARITA.md.
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarRange, Car, CircleDollarSign, Receipt, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import {
   Card, Pill, Button, Field, FieldRow, Input, SectionLabel, EmptyState,
 } from "@/components/aura";
 import type { ParkingRate, ParkingShift, Vehicle, VehicleMovement } from "@/types/aura";
+import { VehicleRegistry } from "./_components/VehicleRegistry";
 
 interface Report {
   from: string; to: string;
@@ -232,6 +233,8 @@ function GuaritaAdminInner() {
               </Card>
 
               {/* Placas marcadas */}
+              {propertyId && <VehicleRegistry propertyId={propertyId} />}
+
               <Card header={{ icon: AlertTriangle, tone: "amber", title: "Placas marcadas", sub: "atenção e liberação permanente" }}>
                 {data.flaggedVehicles.length === 0 ? (
                   <EmptyState compact icon={AlertTriangle} title="Nenhuma placa marcada" description="Placas em atenção aparecem aqui e alertam o guarita na entrada." />

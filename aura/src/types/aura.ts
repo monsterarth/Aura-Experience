@@ -3466,7 +3466,10 @@ export interface PlateLookup {
   cabinName?: string | null;
   stayId?: string | null;
   checkOut?: string | null;
+  staffId?: string | null;
   staffName?: string | null;
+  /** Fornecedor vinculado no cadastro da placa (tabela `suppliers`). */
+  supplierName?: string | null;
   /** Movimento em aberto: este carro já está no pátio. */
   openMovement?: VehicleMovement | null;
   /** Quantas vezes já entrou (histórico). */
