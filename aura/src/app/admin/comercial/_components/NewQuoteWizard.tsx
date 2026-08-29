@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, ArrowLeft, ArrowRight, BadgeCheck, ChevronDown, ChevronUp, Copy,
-  GripVertical, Heart, Loader2, Pencil, Phone, Plus, Save, Trash2, X,
+  GripVertical, Heart, Loader2, Pencil, Phone, Plus, Save, Trash2, Users, X,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { useCloseGuard } from "@/lib/use-discard-guard";
@@ -107,6 +107,22 @@ const paxText = (p: Pax) => {
 };
 const paxLabel = (r: DraftRoom) => paxText(paxOf(r));
 
+/** Assinatura da ocupação — a chave que diz se o pedido daquela cabana mudou. */
+const paxSig = (r: DraftRoom) => {
+  const p = paxOf(r);
+  return `${p.adults}|${p.children}|${p.babies}|${p.pets}`;
+};
+const paxFromSig = (sig: string): Pax => {
+  const [adults, children, babies, pets] = sig.split("|").map((n) => parseInt(n) || 0);
+  return { adults, children, babies, pets };
+};
+/** Tem preço oferecido (congelado pelo vendedor) em alguma cabana? */
+const hasOfferedPrice = (r: DraftRoom) =>
+  Object.values(r.prices).some((v) => {
+    const n = parseMoneyBR(v);
+    return Number.isFinite(n) && n > 0;
+  });
+
 const sumPax = (list: Pax[]): Pax => list.reduce((a, p) => ({
   adults: a.adults + p.adults, children: a.children + p.children,
   babies: a.babies + p.babies, pets: a.pets + p.pets,
@@ -127,6 +143,13 @@ const quoteComposition = (q: RateQuoteRecord): { count: number; pax: Pax } =>
 export type QuoteSeed = {
   /** Presente = edita o MESMO orçamento; ausente = cria um lead novo. */
   quoteId?: string | null;
+  /**
+   * `updatedAt` do orçamento no momento em que esta tela foi semeada. Vai no
+   * save como base da trava otimista: se o banco estiver noutra versão, o
+   * servidor recusa em vez de gravar por cima (era assim que uma tela velha
+   * ressuscitava acomodação removida).
+   */
+  baseUpdatedAt?: string | null;
   clientName?: string | null;
   clientPhone?: string | null;
   clientEmail?: string | null;
@@ -228,6 +251,19 @@ export function NewQuoteWizard({
   /** Acomodações salvas cujo recorte de cabanas oferecidas ainda vai ser
    *  aplicado ao `deselected` assim que o cálculo estiver de pé. */
   const narrowSeedRef = useRef<RateQuoteRoom[] | null>(seed?.rooms ?? null);
+  /**
+   * Ocupação para a qual o preço oferecido de cada acomodação foi definido.
+   * Mudar de 4 para 5 pagantes muda a TABELA, mas o preço congelado sobrevive
+   * — e sobrevivia CALADO: a cabana continuava oferecida pelo valor de 4
+   * pessoas e ninguém via. Quando isto desencontra, a tela pergunta.
+   */
+  const pricePaxRef = useRef<Record<string, string>>(
+    Object.fromEntries(rooms.map((r) => [r.id, paxSig(r)]))
+  );
+  /** Acomodação com o editor de ocupação aberto + o pax de quando abriu. */
+  const [paxEdit, setPaxEdit] = useState<{ roomId: string; from: string } | null>(null);
+  /** Acomodação cujo preço oferecido ficou para uma ocupação que mudou. */
+  const [priceAsk, setPriceAsk] = useState<{ roomId: string; from: string } | null>(null);
   const [linkedGuest, setLinkedGuest] = useState<{ id: string; name: string } | null>(
     seed?.guestId ? { id: seed.guestId, name: seed.clientName || seed.guestId } : null
   );
@@ -271,12 +307,52 @@ export function NewQuoteWizard({
     // Herda também as cabanas oferecidas: duplicar a acomodação "Eco Suíte"
     // não pode nascer oferecendo o parque inteiro.
     setDeselected((prev) => (prev[id] ? { ...prev, [newId]: new Set(prev[id]) } : prev));
+    // A cópia leva os preços oferecidos — leva junto a ocupação para a qual
+    // eles valem, senão mudar o pax da cópia não acusaria nada.
+    const source = rooms.find((r) => r.id === id);
+    if (source) pricePaxRef.current[newId] = paxSig(source);
     if (scroll) scrollRoomIntoView(newId);
   };
   const removeRoom = (id: string) => {
     markDirty();
     setRooms((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
     setOverDraft((d) => (d?.roomId === id ? null : d));
+    setPaxEdit((p) => (p?.roomId === id ? null : p));
+    setPriceAsk((p) => (p?.roomId === id ? null : p));
+  };
+
+  // ── Ocupação por acomodação, no passo 3 ────────────────────────────────────
+  // Antes o pax só existia no passo 1: mudar "acomodação 7 fica com 5 pessoas"
+  // obrigava a voltar ao pedido, editar e avançar de novo. Agora ele é editado
+  // no mesmo card onde as cabanas e o período já eram.
+
+  /** Fecha o editor de ocupação — e é AQUI que o preço congelado é cobrado. */
+  const closePaxEdit = () => {
+    const open = paxEdit;
+    setPaxEdit(null);
+    if (!open) return;
+    const room = rooms.find((r) => r.id === open.roomId);
+    if (!room || open.from === paxSig(room)) return;
+    if (hasOfferedPrice(room)) setPriceAsk({ roomId: room.id, from: open.from });
+    else pricePaxRef.current[room.id] = paxSig(room);
+  };
+  const togglePaxEdit = (room: DraftRoom) => {
+    const same = paxEdit?.roomId === room.id;
+    closePaxEdit();
+    if (!same) setPaxEdit({ roomId: room.id, from: paxSig(room) });
+  };
+  /** O preço oferecido desta acomodação foi definido para OUTRA ocupação. */
+  const priceStale = (r: DraftRoom) =>
+    hasOfferedPrice(r) && (pricePaxRef.current[r.id] ?? paxSig(r)) !== paxSig(r);
+  /** Resposta do "manter o preço oferecido?": manter congela, soltar volta à tabela. */
+  const answerPriceAsk = (keep: boolean) => {
+    const ask = priceAsk;
+    setPriceAsk(null);
+    if (!ask) return;
+    const room = rooms.find((r) => r.id === ask.roomId);
+    if (!room) return;
+    if (!keep) patchRoom(room.id, { prices: {} });
+    pricePaxRef.current[room.id] = paxSig(room);
   };
 
   // ── Ordem das acomodações — é a ordem que o cliente vê no link da proposta ──
@@ -425,6 +501,8 @@ export function NewQuoteWizard({
     setAdopted(q);
     setSavedId(q.id);
     savedKeyRef.current = null;   // o que está na tela ainda não foi gravado
+    // Passamos a escrever NAQUELE orçamento: a base da trava é a versão dele.
+    baseUpdatedAtRef.current = q.updatedAt ?? null;
     if (q.guestId) setLinkedGuest({ id: q.guestId, name: q.clientName || name });
     if (!phone.trim() && q.clientPhone) setPhone(q.clientPhone);
     if (!email.trim() && q.clientEmail) setEmail(q.clientEmail);
@@ -441,6 +519,7 @@ export function NewQuoteWizard({
   /** Traz período, acomodações e ajustes comerciais do orçamento salvo para a
    *  tela — o lado "manter o que já estava" do comparativo. */
   const applyQuoteToDraft = (q: RateQuoteRecord) => {
+    baseUpdatedAtRef.current = q.updatedAt ?? null;
     setCheckIn(q.checkIn);
     setCheckOut(q.checkOut);
     setRooms(seedRooms({
@@ -512,6 +591,16 @@ export function NewQuoteWizard({
   /** Mensagem na tela para cópia manual — só quando o navegador recusou. */
   const [manualMsg, setManualMsg] = useState<string | null>(null);
   const savedKeyRef = useRef<string | null>(null);
+  /**
+   * Versão do orçamento sobre a qual esta tela está editando. Nasce da semente
+   * e avança a cada gravação nossa; o servidor recusa o save quando ela não
+   * bate com o banco (alguém mexeu no meio, ou esta aba ficou para trás).
+   */
+  const baseUpdatedAtRef = useRef<string | null>(seed?.baseUpdatedAt ?? null);
+  /** Orçamento fresco devolvido pelo 409 — alimenta o diálogo de conflito. */
+  const [conflict, setConflict] = useState<RateQuoteRecord | null>(null);
+  /** O que refazer se o vendedor escolher gravar por cima (salvar × copiar). */
+  const conflictRetry = useRef<((force: boolean) => void) | null>(null);
 
   useEffect(() => {
     if (bundle) return;
@@ -777,7 +866,7 @@ export function NewQuoteWizard({
   ]);
   const isSavedCurrent = savedId !== null && savedKeyRef.current === quoteKey;
 
-  const save = async (status: "open" | "sent"): Promise<string | null> => {
+  const save = async (status: "open" | "sent", force = false): Promise<string | null> => {
     if (blocked) {
       const empty = roomQuotes?.find((rq) => rq.result.categories.length > 0 && includedOf(rq).length === 0);
       toast.error(empty
@@ -800,6 +889,9 @@ export function NewQuoteWizard({
           propertyId,
           quote: {
             id: savedId ?? undefined,   // re-salvar atualiza o MESMO lead
+            // Base da trava otimista (e o "gravar assim mesmo" do conflito).
+            baseUpdatedAt: baseUpdatedAtRef.current ?? undefined,
+            force: force || undefined,
             clientName: name.trim(), clientDocument: document.trim(),
             clientDocumentType: documentType, clientLanguage: language,
             clientPhone: phone.trim(), clientEmail: email.trim(),
@@ -837,8 +929,18 @@ export function NewQuoteWizard({
         }),
       });
       const data = await res.json().catch(() => null);
+      // 409: o orçamento mudou desde que esta tela abriu. Nada foi gravado —
+      // o vendedor decide entre recarregar o pedido de verdade ou gravar o
+      // que está na tela por cima, sabendo o que está sobrescrevendo.
+      if (res.status === 409 && data?.quote) {
+        setConflict(data.quote as RateQuoteRecord);
+        return null;
+      }
       if (!res.ok) throw new Error(data?.error);
       setSavedId(data.id);
+      // A gravação passa a ser a nova base — sem isto o SEGUNDO save da mesma
+      // tela (salvar e depois copiar) bateria contra a própria escrita.
+      if (data.updatedAt) baseUpdatedAtRef.current = String(data.updatedAt);
       savedKeyRef.current = quoteKey;
       return data.id as string;
     } catch (e) {
@@ -849,8 +951,9 @@ export function NewQuoteWizard({
     }
   };
 
-  const saveAndClose = async () => {
-    const id = await save("open");
+  const saveAndClose = async (force = false) => {
+    conflictRetry.current = (f) => { void saveAndClose(f); };
+    const id = await save("open", force);
     if (!id) return;
     toast.success(adopted
       ? "Orçamento existente atualizado — sem card repetido no funil."
@@ -868,14 +971,15 @@ export function NewQuoteWizard({
     }).catch(() => {});
   };
 
-  const copyQuote = async () => {
+  const copyQuote = async (force = false) => {
     if (!bundle || !roomQuotes) return;
+    conflictRetry.current = (f) => { void copyQuote(f); };
 
     // Salva ANTES de montar a mensagem: o {QUOTE_LINK} precisa do id, e o
     // orçamento copiado tem que existir no funil de qualquer forma.
     let quoteId = savedId;
     if (!isSavedCurrent) {
-      quoteId = await save("open");
+      quoteId = await save("open", force);
       if (!quoteId) return;
     }
 
@@ -1183,8 +1287,12 @@ export function NewQuoteWizard({
     const strike = custom
       ? (offered < c.finalTotal ? c.finalTotal : null)
       : (Math.abs(c.finalTotal - c.rawTotal) > 5 ? c.rawTotal : null);
-    const setPrice = (v: string) =>
+    const setPrice = (v: string) => {
+      // Digitar o preço agora ancora ele NESTA ocupação — é a resposta
+      // implícita para "este valor vale para quantas pessoas?".
+      pricePaxRef.current[room.id] = paxSig(room);
       patchRoom(room.id, { prices: { ...room.prices, [c.categoryId]: v } });
+    };
     return (
       <div key={c.categoryId}
         style={{
@@ -1752,7 +1860,22 @@ export function NewQuoteWizard({
                       <span style={{ fontSize: 12, fontWeight: 800, color: T.text }}>
                         {roomQuotes.length > 1 ? roomLabel(rq.room, i, includedOf(rq)) : "Cabanas oferecidas"}
                       </span>
-                      <span style={{ fontSize: 11, color: T.muted }}>{paxLabel(rq.room)}</span>
+                      {/* A ocupação é EDITÁVEL aqui — o pedido do cliente que
+                          mais muda depois da proposta ("essa fica com 5") não
+                          pode exigir uma volta ao passo 1. */}
+                      <button onClick={() => togglePaxEdit(rq.room)}
+                        title="Mudar quantas pessoas ficam nesta acomodação"
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          padding: "3px 8px", borderRadius: 7, cursor: "pointer", fontFamily: "inherit",
+                          fontSize: 11, fontWeight: 700,
+                          background: paxEdit?.roomId === rq.room.id ? T.gradSoft : "transparent",
+                          border: `1px solid ${paxEdit?.roomId === rq.room.id ? T.g1Border : T.border2}`,
+                          color: paxEdit?.roomId === rq.room.id ? T.g1 : T.muted,
+                        }}>
+                        <Users size={11} /> {paxLabel(rq.room)}
+                        <Pencil size={9} />
+                      </button>
                       {rq.room.selectedCategory && (
                         <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), fontSize: 9 }}>escolhida</span>
                       )}
@@ -1857,6 +1980,59 @@ export function NewQuoteWizard({
                         )}
                       </span>
                     </div>
+
+                    {/* Ocupação desta acomodação — recalcula ao vivo, igual às
+                        datas. Fechar é o momento em que o preço congelado é
+                        cobrado (ver answerPriceAsk). */}
+                    {paxEdit?.roomId === rq.room.id && (
+                      <div style={{
+                        background: T.glass2, border: `1px solid ${T.g1Border}`,
+                        borderRadius: 11, padding: "11px 13px",
+                        display: "flex", flexDirection: "column", gap: 8,
+                      }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+                          {numField("Adultos", rq.room.adults, (v) => patchRoom(rq.room.id, { adults: v }))}
+                          {numField("Crianças", rq.room.children, (v) => patchRoom(rq.room.id, { children: v }))}
+                          {numField("Bebês", rq.room.babies, (v) => patchRoom(rq.room.id, { babies: v }))}
+                          {numField("Pets", rq.room.pets, (v) => patchRoom(rq.room.id, { pets: v }))}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 10.5, color: T.muted }}>
+                            As cabanas e os valores abaixo recalculam sozinhos.
+                          </span>
+                          <button onClick={closePaxEdit}
+                            style={{ ...S.gradBtn, marginLeft: "auto", padding: "5px 12px", fontSize: 11, boxShadow: "none" }}>
+                            Pronto
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Rede de segurança para o pax mudado no passo 1: o preço
+                        congelado lá também é de outra ocupação. */}
+                    {priceStale(rq.room) && (
+                      <div style={{
+                        background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 11,
+                        padding: "8px 12px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                      }}>
+                        <AlertTriangle size={12} color={T.amber} style={{ flexShrink: 0 }} />
+                        <span style={{ fontSize: 11.5, color: T.amber }}>
+                          O preço oferecido aqui foi definido para outra ocupação.
+                        </span>
+                        <button
+                          onClick={() => setPriceAsk({
+                            roomId: rq.room.id,
+                            from: pricePaxRef.current[rq.room.id] ?? paxSig(rq.room),
+                          })}
+                          style={{
+                            marginLeft: "auto", padding: "4px 10px", borderRadius: 8, border: "none",
+                            background: T.amber, color: "#1c1c1c", fontSize: 10.5, fontWeight: 800,
+                            cursor: "pointer", fontFamily: "inherit",
+                          }}>
+                          Revisar
+                        </button>
+                      </div>
+                    )}
 
                     {rq.result.uncoveredDates.length > 0 && (
                       <p style={{ fontSize: 11.5, color: T.red, margin: 0 }}>
@@ -1990,12 +2166,12 @@ export function NewQuoteWizard({
                 <Phone size={13} /> WhatsApp
               </a>
             )}
-            <button onClick={saveAndClose} disabled={saving || blocked}
+            <button onClick={() => saveAndClose()} disabled={saving || blocked}
               style={{ ...S.ghostBtn, marginLeft: "auto", opacity: saving ? 0.6 : 1 }}>
               {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
               {targetId ? "Salvar alterações" : "Salvar no funil"}
             </button>
-            <button onClick={copyQuote} disabled={saving || blocked}
+            <button onClick={() => copyQuote()} disabled={saving || blocked}
               style={{ ...S.gradBtn, opacity: saving ? 0.7 : 1 }}>
               <Copy size={14} /> Copiar orçamento
             </button>
@@ -2011,6 +2187,111 @@ export function NewQuoteWizard({
           </>)}
         </div>
       </div>
+
+      {/* Mudou a ocupação com preço oferecido em cima: o valor congelado foi
+          negociado para OUTRO número de pessoas. Fechar sem responder mantém
+          (é o comportamento de sempre) — o que não pode é ninguém saber. */}
+      <Dialog open={priceAsk !== null} onClose={() => answerPriceAsk(true)} presentation="auto" size="sm"
+        title="Manter o preço oferecido?">
+        {priceAsk && (() => {
+          const rq = roomQuotes?.find((q) => q.room.id === priceAsk.roomId);
+          if (!rq) return null;
+          const before = paxFromSig(priceAsk.from);
+          const rows = Object.entries(rq.room.prices)
+            .map(([categoryId, raw]) => {
+              const v = parseMoneyBR(raw);
+              const c = rq.result.categories.find((o) => o.categoryId === categoryId);
+              return Number.isFinite(v) && v > 0 && c
+                ? { name: c.category, offered: v, table: c.finalTotal }
+                : null;
+            })
+            .filter((x): x is { name: string; offered: number; table: number } => x !== null);
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <p style={{ fontSize: 11.5, color: T.muted, margin: 0, lineHeight: 1.5 }}>
+                Esta acomodação passou de <b style={{ color: T.text }}>{paxText(before)}</b> para{" "}
+                <b style={{ color: T.text }}>{paxLabel(rq.room)}</b>. O preço que você
+                ofereceu foi negociado para a ocupação anterior — a tabela mudou junto.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {rows.map((r) => (
+                  <div key={r.name} style={{ ...S.row, padding: "9px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: T.text }}>{r.name}</span>
+                    <span style={{ fontSize: 11, color: T.muted }}>
+                      tabela agora R$ {formatBRL(r.table)}
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 900, color: T.amber }}>
+                      R$ {formatBRL(r.offered)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button onClick={() => answerPriceAsk(false)} style={S.ghostBtn}>
+                  Usar o valor da tabela
+                </button>
+                <button onClick={() => answerPriceAsk(true)} style={{ ...S.gradBtn, marginLeft: "auto" }}>
+                  Manter o preço oferecido
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+      </Dialog>
+
+      {/* Conflito de versão — NADA foi gravado ainda. O caso real: o vendedor
+          salvou, o drawer atrás ficou velho, ele reabriu o Editar dali e a tela
+          voltou com a acomodação que ele tinha removido. Antes isso gravava por
+          cima calado; agora ele vê os dois lados e escolhe. */}
+      <Dialog open={conflict !== null} onClose={() => setConflict(null)} presentation="auto" size="sm"
+        title="Esta cotação mudou enquanto você editava">
+        {conflict && (() => {
+          const saved = quoteComposition(conflict);
+          const mine = { count: rooms.length, pax: sumPax(rooms.map(paxOf)) };
+          const line = (c: { count: number; pax: Pax }) =>
+            `${c.count} acomodaç${c.count > 1 ? "ões" : "ão"} · ${paxText(c.pax)}`;
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <p style={{ fontSize: 11.5, color: T.muted, margin: 0, lineHeight: 1.5 }}>
+                Alguém — outra pessoa, outra aba, ou o próprio painel do orçamento —
+                gravou depois que esta tela abriu. <b style={{ color: T.text }}>Nada foi
+                salvo ainda</b>: escolha qual pedido vale.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                <div style={{ ...S.row, padding: "9px 12px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: T.muted2, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                    No banco agora
+                  </div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text }}>{line(saved)}</div>
+                </div>
+                <div style={{ ...S.row, padding: "9px 12px", border: `1px solid ${T.g1Border}`, background: T.gradSoft }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: T.g1, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                    Nesta tela
+                  </div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text }}>{line(mine)}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  onClick={() => {
+                    applyQuoteToDraft(conflict);
+                    savedKeyRef.current = null;
+                    setConflict(null);
+                    toast.success("Pedido recarregado do banco — refaça o ajuste.");
+                  }}
+                  style={S.ghostBtn}>
+                  Descartar e recarregar
+                </button>
+                <button
+                  onClick={() => { setConflict(null); conflictRetry.current?.(true); }}
+                  style={{ ...S.gradBtn, marginLeft: "auto" }}>
+                  Gravar o desta tela
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+      </Dialog>
 
       {/* Cópia manual — o orçamento já está salvo; falta só a mensagem sair. */}
       <Dialog open={manualMsg !== null} onClose={() => setManualMsg(null)} presentation="auto" size="md" title="Copie a mensagem">

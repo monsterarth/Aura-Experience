@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { RateService } from "@/services/rate-service";
+import { QuoteConflictError, RateService } from "@/services/rate-service";
 import { CrmService } from "@/services/crm-service";
 
 export const dynamic = "force-dynamic";
@@ -58,9 +58,15 @@ export async function POST(req: NextRequest) {
   if (!body?.quote) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
 
   try {
-    const id = await RateService.saveQuote(propertyId, body.quote, auth.staff.id, auth.staff.fullName);
-    return NextResponse.json({ id });
+    const saved = await RateService.saveQuote(propertyId, body.quote, auth.staff.id, auth.staff.fullName);
+    return NextResponse.json(saved);
   } catch (e) {
+    // Conflito não é erro de servidor: a tela editou em cima de uma versão
+    // que já não é a do banco. Devolve o orçamento FRESCO junto — o wizard
+    // mostra o que mudou e deixa o vendedor escolher.
+    if (e instanceof QuoteConflictError) {
+      return NextResponse.json({ error: e.message, conflict: true, quote: e.quote }, { status: 409 });
+    }
     console.error("Erro ao salvar orçamento:", e);
     const msg = e instanceof Error ? e.message : "Falha ao salvar o orçamento.";
     return NextResponse.json({ error: msg }, { status: 500 });

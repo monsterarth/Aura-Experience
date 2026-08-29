@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   AlertTriangle, BedDouble, CalendarClock, CalendarDays, ChevronDown, ChevronUp,
   CopyPlus, ExternalLink, GripVertical, Heart, Instagram, Link2, Loader2, Mail,
-  MessageSquare, Pencil, Phone, Save, Send, Tag, Trash2, X, XCircle,
+  MessageSquare, Pencil, Phone, Save, Send, Tag, Trash2, Users, X, XCircle,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { T } from "@/lib/admin-tokens";
@@ -56,11 +56,14 @@ const contactBtn: React.CSSProperties = {
  * definia a escolha sem volta. A gravação passa por `select-room`, que valida
  * a opção no servidor — preço nunca vem do cliente.
  */
-function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDuplicate, onLoaded }: {
+function QuoteSnapshot({ propertyId, lead, busy, active, version, onChanged, onEdit, onDuplicate, onLoaded }: {
   propertyId: string;
   lead: CrmLead;
   busy: boolean;
   active: boolean;
+  /** Bump da página a cada save do wizard — o id do lead não muda ao editar,
+   *  então sem isto o bloco continuava mostrando o pedido de antes. */
+  version: number;
   /** Escolha gravada — a página recarrega o pipeline (valor do card muda). */
   onChanged: () => void;
   onEdit: (quote: RateQuoteRecord) => void;
@@ -74,6 +77,8 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
   /** Cabana com o preço em edição (acomodação + categoria) + rascunho. */
   const [editingPrice, setEditingPrice] = useState<{ roomId: string; categoryId: string } | null>(null);
   const [priceDraft, setPriceDraft] = useState("");
+  /** Acomodação com a remoção pendente de confirmação (tirar do pedido). */
+  const [removingRoom, setRemovingRoom] = useState<string | null>(null);
   /** Arrasto da ordem das acomodações (a mesma que o cliente lê no link). */
   const [dragRoomId, setDragRoomId] = useState<string | null>(null);
   const [dragOverRoomId, setDragOverRoomId] = useState<string | null>(null);
@@ -92,7 +97,7 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
       .catch(() => { if (alive) setQuote(null); });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [propertyId, lead.id]);
+  }, [propertyId, lead.id, version]);
 
   if (!quote) return null;
 
@@ -134,6 +139,32 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
 
   const commit = (roomId: string, categoryId: string | null) =>
     patchRoom(roomId, { categoryId }, categoryId ? "Cabana escolhida." : "Escolha desfeita.");
+
+  /**
+   * Tira a acomodação do pedido aqui mesmo — "somos 7, não 8" é a conversa
+   * mais comum depois da proposta enviada, e antes ela obrigava a abrir o
+   * wizard, achar a lixeira e re-salvar o orçamento inteiro. Remover não
+   * reprecifica nada: o servidor só apaga a acomodação e refaz o total.
+   */
+  const removeRoom = async (roomId: string) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/tarifario/quotes/remove-room", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId, id: quote.id, roomId }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(d?.error);
+      setQuote(d.quote);
+      setRemovingRoom(null);
+      onChanged();
+      toast.success("Acomodação removida do pedido.");
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Erro ao remover a acomodação.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   /**
    * Grava a nova ordem. Otimista: a lista já muda no clique/solta (arrastar e
@@ -301,6 +332,45 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
               {room.allowOverCapacity && (
                 <span style={{ ...pillS(T.amberBg, T.amber, T.amberBorder), fontSize: 9, gap: 3 }}>
                   <AlertTriangle size={9} /> exceção de capacidade
+                </span>
+              )}
+              {/* Composição da acomodação: mudar quem ocupa reprecifica, então
+                  é o wizard quem faz; TIRAR do pedido não reprecifica nada e
+                  acontece aqui mesmo, com confirmação (é destrutivo). */}
+              {active && (
+                <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+                  {removingRoom === room.id ? (
+                    <>
+                      <span style={{ fontSize: 10.5, color: T.red, fontWeight: 700 }}>Tirar do pedido?</span>
+                      <button onClick={() => removeRoom(room.id)} disabled={busyAll}
+                        style={{
+                          padding: "4px 10px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+                          fontSize: 10.5, fontWeight: 800, border: "none",
+                          background: T.red, color: "#1c1c1c",
+                        }}>
+                        {saving ? <Loader2 size={11} className="animate-spin" /> : "Remover"}
+                      </button>
+                      <button onClick={() => setRemovingRoom(null)}
+                        style={{ ...S.ghostBtn, padding: "4px 8px", fontSize: 10.5 }}>
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => onEdit(quote)} disabled={busyAll}
+                        title="Mudar quantas pessoas ficam nesta acomodação (recalcula os valores)"
+                        style={{ padding: 4, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
+                        <Users size={12} />
+                      </button>
+                      {rooms.length > 1 && (
+                        <button onClick={() => setRemovingRoom(room.id)} disabled={busyAll}
+                          title="Tirar esta acomodação do pedido"
+                          style={{ padding: 4, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </>
+                  )}
                 </span>
               )}
             </div>
@@ -835,7 +905,7 @@ export function LeadDrawer({
   propertyId, lead, channels, busy,
   onClose, onFollowUp, onAddNote, onMoveStage, onMarkLost, onWin, onOpenOrigin, onPatch,
   onPromoteGuest, onAlarmsChanged, onEditQuote, onDuplicateQuote, onQuoteChanged,
-  onDeleted, proposalUrl,
+  onDeleted, proposalUrl, quoteVersion = 0,
 }: {
   open?: boolean;
   propertyId: string;
@@ -862,6 +932,8 @@ export function LeadDrawer({
   onDeleted?: () => void;
   /** Link público da proposta (/cotacao/<id>), quando disponível. */
   proposalUrl?: string | null;
+  /** Muda a cada gravação do wizard — força o bloco Orçamento a reler. */
+  quoteVersion?: number;
 }) {
   const { userData, isAdmin, isSuperAdmin } = useAuth();
   const canDelete = isSuperAdmin || isAdmin || userData?.role === "manager";
@@ -1058,6 +1130,7 @@ export function LeadDrawer({
             {/* Orçamento — acomodações pedidas e as cabanas oferecidas em cada */}
             {isQuote && (
               <QuoteSnapshot propertyId={propertyId} lead={lead} busy={busy} active={active}
+                version={quoteVersion}
                 onChanged={() => { onQuoteChanged?.(); setTimelineKey((k) => k + 1); }}
                 onEdit={(q) => onEditQuote?.(q)}
                 onDuplicate={(q) => onDuplicateQuote?.(q)}

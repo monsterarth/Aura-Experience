@@ -56,16 +56,41 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardSeed, setWizardSeed] = useState<QuoteSeed | null>(null);
   const bundleCache = useRef<RateBundle | null>(null);
+  /**
+   * Bump a cada gravação do wizard. O drawer busca o orçamento num efeito preso
+   * ao id do lead — e o id NÃO muda ao editar, então sem este sinal ele
+   * continuava desenhando o pedido de antes: a acomodação removida seguia na
+   * tela, "Editar" reabria o wizard com ela e o save gravava tudo de volta.
+   */
+  const [quoteVersion, setQuoteVersion] = useState(0);
 
   const openWizard = (seed: QuoteSeed | null = null) => {
     setWizardSeed(seed);
     setWizardOpen(true);
   };
 
+  /**
+   * Abre o wizard com o orçamento RECÉM-LIDO do banco, nunca com a cópia que o
+   * drawer tem em memória: a semente é o que o save vai gravar de volta, então
+   * ela não pode ser velha. Se a leitura falhar, cai no que estava em tela (com
+   * a trava otimista do servidor ainda protegendo a gravação).
+   */
+  const openQuoteEditor = async (q: RateQuoteRecord, keepId: boolean) => {
+    if (!property?.id) return;
+    const res = await fetch(
+      `/api/admin/tarifario/quotes?propertyId=${property.id}&id=${q.id}`
+    ).catch(() => null);
+    const fresh: RateQuoteRecord = (res?.ok ? (await res.json())?.quote : null) ?? q;
+    openWizard(seedFromQuote(fresh, keepId));
+  };
+
   /** Semente a partir de um orçamento: editar o MESMO (keepId) ou clonar só
    *  o cliente para um lead NOVO (o anterior fica intacto). */
   const seedFromQuote = (q: RateQuoteRecord, keepId: boolean): QuoteSeed => ({
     quoteId: keepId ? q.id : null,
+    // Versão sobre a qual esta edição foi construída — o servidor recusa o
+    // save se o orçamento tiver mudado no meio (QuoteConflictError).
+    baseUpdatedAt: keepId ? q.updatedAt ?? null : null,
     clientName: q.clientName, clientPhone: q.clientPhone,
     clientEmail: q.clientEmail, clientInstagram: q.clientInstagram,
     clientDocument: q.clientDocument,
@@ -608,10 +633,11 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           onPatch={(patch) => patchLead(drawerLead, patch)}
           onPromoteGuest={(payload) => promoteGuest(drawerLead, payload)}
           onAlarmsChanged={loadAlarms}
+          quoteVersion={quoteVersion}
           onQuoteChanged={() => reload(drawerLead.id)}
           onDeleted={() => { setSelected(null); reload(); }}
-          onEditQuote={(q) => openWizard(seedFromQuote(q, true))}
-          onDuplicateQuote={(q) => openWizard(seedFromQuote(q, false))}
+          onEditQuote={(q) => openQuoteEditor(q, true)}
+          onDuplicateQuote={(q) => openQuoteEditor(q, false)}
           proposalUrl={drawerLead.entityType === "quote" ? `${proposalBase}/cotacao/${drawerLead.id}` : null}
         />
       )}
@@ -634,7 +660,13 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           initialBundle={bundleCache.current}
           onBundleLoaded={(b) => { bundleCache.current = b; }}
           onClose={() => { setWizardOpen(false); setWizardSeed(null); }}
-          onSaved={(id) => { reload(selected?.id); resolveWaitlistPending(id); }}
+          onSaved={(id) => {
+            // O bump é o que faz o drawer reler o orçamento: o lead volta
+            // fresco do reload, mas o id é o mesmo e o efeito de lá não roda.
+            setQuoteVersion((v) => v + 1);
+            reload(selected?.id);
+            resolveWaitlistPending(id);
+          }}
           onOpenExisting={openExistingQuote}
           seed={wizardSeed}
         />

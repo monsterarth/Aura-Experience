@@ -144,6 +144,22 @@ const QUOTE_STAGE_LABEL: Record<RateQuoteStatus, string> = {
 };
 
 /**
+ * O orçamento mudou entre a tela abrir e o save chegar. Erro PRÓPRIO porque a
+ * rota devolve 409 e o wizard trata: recarregar o pedido fresco ou gravar por
+ * cima de propósito. Sem isto o save do wizard é um "last write wins" cego —
+ * uma tela desatualizada RESSUSCITAVA acomodação removida e desfazia preço
+ * negociado no drawer, sem erro nenhum e sem rastro do que se perdeu.
+ */
+export class QuoteConflictError extends Error {
+  readonly quote: RateQuoteRecord;
+  constructor(quote: RateQuoteRecord) {
+    super("Esta cotação mudou depois que você abriu esta tela.");
+    this.name = "QuoteConflictError";
+    this.quote = quote;
+  }
+}
+
+/**
  * Assinatura da exceção de capacidade do orçamento (acomodações × categorias ×
  * motivo). Re-salvar sem mexer na exceção não repete a nota na timeline.
  */
@@ -877,10 +893,17 @@ export const RateService = {
    */
   async saveQuote(
     propertyId: string,
-    payload: Partial<RateQuoteRecord>,
+    payload: Partial<RateQuoteRecord> & {
+      /** `updatedAt` que a tela leu ao abrir — a base da edição. Diferente do
+       *  que está no banco = alguém (ou outra tela) mexeu no meio; ver
+       *  QuoteConflictError. Ausente = chamador antigo, sem trava. */
+      baseUpdatedAt?: string | null;
+      /** Gravar por cima mesmo com conflito — decisão explícita do vendedor. */
+      force?: boolean;
+    },
     actorId: string,
     actorName: string
-  ): Promise<string> {
+  ): Promise<{ id: string; updatedAt: string }> {
     const admin = supabaseAdmin!;
     const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
     if (!ISO_DATE.test(payload.checkIn || "") || !ISO_DATE.test(payload.checkOut || "")) {
@@ -1033,6 +1056,15 @@ export const RateService = {
       ? payload.source : null;
 
     const existing = payload.id ? await this.getQuoteById(propertyId, payload.id) : null;
+
+    // Trava otimista: a tela declara em cima de QUAL versão editou. Vale para
+    // qualquer escrita no meio — outro atendente, o drawer trocando preço, a
+    // própria aba do vendedor reaberta com o pedido velho.
+    if (existing && payload.baseUpdatedAt && payload.force !== true &&
+        String(payload.baseUpdatedAt) !== String(existing.updatedAt)) {
+      throw new QuoteConflictError(existing);
+    }
+
     const now = new Date().toISOString();
 
     const common = {
@@ -1129,7 +1161,7 @@ export const RateService = {
         details: `Orçamento de ${common.clientName || "sem nome"} recalculado (${payload.checkIn} → ${payload.checkOut}).`,
       });
       await logOverCapacity(existing.id);
-      return existing.id;
+      return { id: existing.id, updatedAt: now };
     }
 
     // A validade do lead não passa da PRIMEIRA chegada (span de entrada).
@@ -1145,6 +1177,9 @@ export const RateService = {
       status,
       createdBy: actorId,
       createdByName: actorName,
+      // Explícito (e não o default do banco) porque o valor devolvido vira a
+      // base da trava otimista: o próximo save da MESMA tela compara com ele.
+      updatedAt: now,
     });
     if (error) throw new Error(error.message);
 
@@ -1161,7 +1196,7 @@ export const RateService = {
       details: `Orçamento criado: ${common.clientName || "sem nome"} · ${payload.checkIn} → ${payload.checkOut}${source ? ` · origem ${source}` : ""}.`,
     });
     await logOverCapacity(id);
-    return id;
+    return { id, updatedAt: now };
   },
 
   async updateQuote(
@@ -1461,6 +1496,90 @@ export const RateService = {
         propertyId, userId: actor.id, userName: actor.name,
         action: "UPDATE", entity: "RATE_QUOTE", entityId: quoteId,
         details: `Ordem das acomodações de ${quote.clientName || "sem nome"}: ${order}.`,
+      });
+    }
+    return data as RateQuoteRecord;
+  },
+
+  /**
+   * REMOVE uma acomodação do orçamento. Endpoint próprio (e não uma volta ao
+   * wizard) porque tirar uma cabana do pedido — "somos 7, não 8" — é a
+   * conversa mais comum depois de enviada a proposta, e remover não reprecifica
+   * nada: as opções das outras acomodações já foram calculadas no servidor e
+   * continuam valendo. O que precisa ser refeito é só o espelho da raiz.
+   *
+   * A última acomodação não sai: orçamento sem acomodação nenhuma não é
+   * orçamento — para isso existe excluir o orçamento.
+   */
+  async removeQuoteRoom(
+    propertyId: string,
+    quoteId: string,
+    roomId: string,
+    actor?: { id: string; name: string }
+  ): Promise<RateQuoteRecord> {
+    const admin = supabaseAdmin!;
+    const quote = await this.getQuoteById(propertyId, quoteId);
+    if (!quote) throw new Error("Orçamento não encontrado.");
+
+    const rooms = quote.rooms ?? [];
+    if (rooms.length < 2) {
+      throw new Error("O orçamento ficaria sem acomodação — exclua o orçamento inteiro.");
+    }
+    const index = rooms.findIndex((r) => r.id === roomId);
+    // Tela desatualizada: recusar é melhor que remover a acomodação errada.
+    if (index < 0) throw new Error("Acomodação não encontrada — recarregue o orçamento.");
+
+    const removed = rooms[index];
+    const label = roomDisplayName(removed, index);
+    const next = rooms.filter((r) => r.id !== roomId);
+    const first = next[0];
+
+    // Período TOTAL recalculado: tirar a acomodação que entrava antes (ou saía
+    // depois) tem que encolher o intervalo do orçamento — é o que o funil, os
+    // prazos do lead e a proposta pública mostram.
+    const inOf = (r: RateQuoteRoom) => r.checkIn || quote.checkIn;
+    const outOf = (r: RateQuoteRoom) => r.checkOut || quote.checkOut;
+    const spanIn = next.reduce((m, r) => (inOf(r) < m ? inOf(r) : m), inOf(first));
+    const spanOut = next.reduce((m, r) => (outOf(r) > m ? outOf(r) : m), outOf(first));
+
+    const { data, error } = await admin
+      .from("rate_quotes")
+      .update({
+        rooms: next,
+        checkIn: spanIn,
+        checkOut: spanOut,
+        // Espelho da acomodação 1 (mesma regra do saveQuote/reorder).
+        snapshot: first.options,
+        selectedCategory: first.selectedCategory ?? null,
+        adults: first.adults, children: first.children,
+        babies: first.babies, pets: first.pets,
+        finalValue: next.every((r) => r.selectedCategory)
+          ? next.reduce((s, r) => s + resolveRoomValue(r).value, 0)
+          : null,
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", quoteId)
+      .eq("propertyId", propertyId)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+
+    const pax = `${removed.adults + removed.children} pagante${removed.adults + removed.children !== 1 ? "s" : ""}`;
+    await CrmService.logInteraction(propertyId, "quote", quoteId, "note", {
+      actorId: actor?.id, actorName: actor?.name,
+      note: `Acomodação removida do pedido: ${label} (${pax}) — restam ${next.length}.`,
+      payload: {
+        tag: "room_removed",
+        roomId, label, adults: removed.adults, children: removed.children,
+        babies: removed.babies, pets: removed.pets,
+        value: resolveRoomValue(removed).value,
+      },
+    });
+    if (actor) {
+      await AuditService.log({
+        propertyId, userId: actor.id, userName: actor.name,
+        action: "UPDATE", entity: "RATE_QUOTE", entityId: quoteId,
+        details: `Acomodação removida de ${quote.clientName || "sem nome"}: ${label} (${pax}). Restam ${next.length}.`,
       });
     }
     return data as RateQuoteRecord;
