@@ -6,15 +6,16 @@
 import { db } from "@/lib/supabase";
 import { FolioItem, LodgingNight, Stay } from "@/types/aura";
 import { formatDateBR, nightsOf, splitNightly } from "@/lib/rate-engine";
+import { assertFolioOpen } from "@/lib/folio-guard";
 import { AuditService } from "./audit-service";
 
 type LodgingStayRow = Pick<
   Stay,
   "id" | "propertyId" | "checkIn" | "checkOut" | "status" | "nightlyRate" | "lodgingTotal"
-> & { lodgingPaused?: boolean; nightlyOverrides?: Record<string, number> };
+> & { lodgingPaused?: boolean; nightlyOverrides?: Record<string, number>; billClosedAt?: string | null };
 
 const LODGING_COLS =
-  "id, propertyId, checkIn, checkOut, status, nightlyRate, lodgingTotal, lodgingPaused, nightlyOverrides";
+  "id, propertyId, checkIn, checkOut, status, nightlyRate, lodgingTotal, lodgingPaused, nightlyOverrides, billClosedAt";
 
 export const FinanceService = {
   /** Hoje no fuso da pousada — o servidor roda em UTC. */
@@ -68,6 +69,7 @@ export const FinanceService = {
     const nightly = Number(stay.nightlyRate) || 0;
     if (nightly <= 0) return 0;
     if (stay.lodgingPaused) return 0;   // lançamento automático pausado
+    if (stay.billClosedAt) return 0;    // conta encerrada não recebe mais nada
     if (["cancelled", "archived"].includes(stay.status)) return 0;
 
     const checkIn = (stay.checkIn || "").slice(0, 10);
@@ -148,6 +150,7 @@ export const FinanceService = {
     actorName: string
   ): Promise<void> {
     if (!(amount > 0)) throw new Error("Valor do pagamento inválido.");
+    await assertFolioOpen(stayId);
     const { error } = await db().from("folio_items").insert({
       id: crypto.randomUUID(),
       propertyId,

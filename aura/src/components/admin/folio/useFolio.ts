@@ -11,6 +11,7 @@ import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { StayService } from "@/services/stay-service";
 import { FinanceService } from "@/services/finance-service";
 import { folioBalance } from "@/lib/stay-account";
+import { FOLIO_CLOSED_MESSAGE, isFolioClosedError } from "@/lib/folio-guard";
 import type { FolioItem } from "@/types/aura";
 
 export interface UseFolioActor {
@@ -63,8 +64,8 @@ export function useFolio(propertyId: string | undefined, stayId: string | undefi
       );
       toast.success("Item adicionado à conta.");
       await reload();
-    } catch {
-      toast.error("Erro ao adicionar item.");
+    } catch (e) {
+      toast.error(isFolioClosedError(e) ? FOLIO_CLOSED_MESSAGE : "Erro ao adicionar item.");
     } finally {
       setLoading(false);
     }
@@ -77,8 +78,8 @@ export function useFolio(propertyId: string | undefined, stayId: string | undefi
       await FinanceService.addPayment(propertyId, stayId, description, amount, actorId, actorName);
       toast.success("Pagamento lançado como crédito.");
       await reload();
-    } catch {
-      toast.error("Erro ao lançar pagamento.");
+    } catch (e) {
+      toast.error(isFolioClosedError(e) ? FOLIO_CLOSED_MESSAGE : "Erro ao lançar pagamento.");
     } finally {
       setLoading(false);
     }

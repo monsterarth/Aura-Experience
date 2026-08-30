@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { ConciergeService } from '@/services/concierge-service';
 import { StayService } from '@/services/stay-service';
 import { AuditService } from '@/services/audit-service';
+import { FOLIO_CLOSED_MESSAGE, isFolioClosedError } from '@/lib/folio-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,7 +63,11 @@ export async function POST(req: Request) {
             actorId, actorName,
           );
         } catch (e: any) {
-          // Estoque insuficiente é erro de negócio — devolve a mensagem para o toast.
+          // Estoque insuficiente e conta encerrada são erros de negócio —
+          // devolvem a mensagem para o toast em vez de virar 500.
+          if (isFolioClosedError(e)) {
+            return NextResponse.json({ error: FOLIO_CLOSED_MESSAGE }, { status: 409 });
+          }
           if (typeof e?.message === 'string' && e.message.includes('indisponível')) {
             return NextResponse.json({ error: e.message }, { status: 409 });
           }
@@ -70,17 +75,10 @@ export async function POST(req: Request) {
         }
       }
 
-      if (body.keyNotFound) {
-        await StayService.addFolioItemManual(
-          propertyId, body.stayId,
-          { description: 'Chave não encontrada', quantity: 1, unitPrice: 0, totalPrice: 0, category: 'services', addedBy: actorId },
-          actorId, actorName,
-        );
-      }
-
       // A resposta da conferência vira estado da conta: até aqui o "não encontrei"
       // só existia como item de rastreio no fólio, e no dia seguinte ninguém sabia
       // se a chave tinha aparecido. Agora o chip fica aceso até alguém resolver.
+      // Vem PRIMEIRO: é o registro que importa, e não pode depender do fólio.
       if (body.keyNotFound || body.keyFound) {
         await supabaseAdmin.from('stays').update({
           keyStatus: body.keyNotFound ? 'missing' : 'found',
@@ -88,6 +86,20 @@ export async function POST(req: Request) {
           keyStatusBy: actorId,
           updatedAt: now,
         }).eq('id', body.stayId);
+      }
+
+      if (body.keyNotFound) {
+        try {
+          await StayService.addFolioItemManual(
+            propertyId, body.stayId,
+            { description: 'Chave não encontrada', quantity: 1, unitPrice: 0, totalPrice: 0, category: 'services', addedBy: actorId },
+            actorId, actorName,
+          );
+        } catch (e) {
+          // Item de rastreio vale R$ 0,00 — numa conta já encerrada ele é
+          // dispensável, e o chip da chave (gravado acima) já conta a história.
+          if (!isFolioClosedError(e)) throw e;
+        }
       }
     }
 

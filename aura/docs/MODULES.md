@@ -13,7 +13,7 @@ are admin/manager (+ the relevant operational role).
 | `core/structures` (+`bookings`) | `structure-service` | Bookable structures + availability |
 | `core/resort-map` · `reservation-map` · `map-pois` | `stay-service`, map APIs | Illustrated resort map, reservation grid, POIs |
 | `core/dashboard` · `dashboard` | — | Operational dashboards (two entry points exist) |
-| `stays` (+`[stayId]`, `new`) | `stay-service` | Reservations / stays (the core entity) |
+| `stays` (+`[stayId]`, `new`) | `stay-service`, `stay-timeline-service` | Reservations / stays (the core entity). A ficha completa traz o **Histórico** — extrato que junta as dez tabelas com `stayId` (auditoria, faxina, estruturas, concierge, pesquisa, café, manutenção, guarita, restaurante e as diárias do fólio) via `/api/admin/stays/timeline` |
 | `guests` | `guest-service` | Guest records (`fnrh-service` for check-in forms) |
 | `contacts` | `contact-service` | CRM-style contacts |
 | `cabins` | `cabin-service` | Cabins / units |

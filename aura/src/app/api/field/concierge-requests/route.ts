@@ -6,6 +6,7 @@
 // transformam o "assumir"/"entregar" duplo em 409 em vez de corrida silenciosa.
 import { NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { isFolioClosedError } from '@/lib/folio-guard';
 import { supabaseAdmin } from '@/lib/supabase';
 import { ConciergeService } from '@/services/concierge-service';
 import { UserRole } from '@/types/aura';
@@ -79,7 +80,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 });
     }
   } catch (e: any) {
-    if (e?.code === 'CONFLICT') return NextResponse.json({ error: e.message }, { status: 409 });
+    if (e?.code === 'CONFLICT' || isFolioClosedError(e)) return NextResponse.json({ error: e.message }, { status: 409 });
     console.error('[field/concierge-requests POST]', e?.message ?? e);
     return NextResponse.json({ error: 'Erro ao processar a ação.' }, { status: 500 });
   }

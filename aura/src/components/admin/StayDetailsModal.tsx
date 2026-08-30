@@ -657,9 +657,10 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                   <LodgingPanel
                     propertyId={stay.propertyId}
                     stayId={stay.id}
+                    readOnly={isGovOnly || account.closed}
                     onChanged={() => { void account.folio.reload(); if (onUpdate) onUpdate(); }}
                   />
-                ) : !isGovOnly ? (
+                ) : !isGovOnly && !account.closed ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", borderRadius: 12, background: T.glass, border: `1px dashed ${T.border2}`, fontSize: 12 }}>
                     <SectionLabel style={{ margin: 0 }}>Diária</SectionLabel>
                     <span style={{ color: T.muted }} className="ak-hide-mobile">Estadia sem valor de hospedagem —</span>

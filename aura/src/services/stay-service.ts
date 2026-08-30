@@ -9,6 +9,7 @@ import { AutomationService } from "./automation-service";
 import { GuestService } from "./guest-service";
 import { HousekeepingService } from "./housekeeping-service";
 import { applyTimeToDate, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
+import { assertFolioOpen } from "@/lib/folio-guard";
 
 export const StayService = {
   async triggerAutomation(
@@ -843,7 +844,13 @@ export const StayService = {
     return (data || []) as FolioItem[];
   },
 
+  /**
+   * Porta única de entrada do fólio — recepção, concierge, frigobar da camareira
+   * e as cobranças de chave/empréstimo passam todas por aqui. Por isso a trava de
+   * conta encerrada mora neste ponto: uma checagem cobre todos.
+   */
   async addFolioItemManual(propertyId: string, stayId: string, item: Omit<FolioItem, 'id' | 'createdAt' | 'status'>, actorId: string, actorName: string) {
+    await assertFolioOpen(stayId);
     const itemId = uuidv4();
     const { error } = await db().from('folio_items').insert({
       ...item,

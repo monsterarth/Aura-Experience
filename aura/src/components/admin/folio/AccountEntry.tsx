@@ -10,7 +10,7 @@ import React, { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  CheckCircle2, HandHelping, Minus, PackageSearch, Plus, Search, ShoppingBasket, XCircle,
+  CheckCircle2, HandHelping, Minus, PackageSearch, Plus, Search, ShoppingBasket, X, XCircle,
 } from "lucide-react";
 import { T, alpha } from "@/lib/admin-tokens";
 import { Button, Field, IconButton, Input, Pill, Select, Spinner, useConfirm } from "@/components/aura";
@@ -77,9 +77,12 @@ export function LoanBlock({ a, readOnly }: { a: StayAccountState; readOnly?: boo
                 <Button size="sm" variant="secondary" icon={CheckCircle2} loading={a.busy} onClick={() => void a.resolveLoan(r.id, "return")}>
                   Devolvido
                 </Button>
-                <Button size="sm" variant="ghost" tone="red" icon={XCircle} loading={a.busy} onClick={() => void askLost(r)}>
-                  Extraviado
-                </Button>
+                {/* Extraviar cobra o valor de perda — não passa em conta encerrada. */}
+                {!a.closed && (
+                  <Button size="sm" variant="ghost" tone="red" icon={XCircle} loading={a.busy} onClick={() => void askLost(r)}>
+                    Extraviado
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -101,29 +104,51 @@ export function LoanBlock({ a, readOnly }: { a: StayAccountState; readOnly?: boo
 
 // ── Novo lançamento: catálogo ou avulso ──────────────────────────────────────
 
+/**
+ * Lançar na conta — recolhido por padrão.
+ *
+ * O formulário (catálogo com busca + carrinho, ou avulso) ocupava a metade de
+ * baixo da conta em todas as telas, o tempo todo, mesmo quando ninguém ia
+ * lançar nada. Aqui ele é um botão até alguém precisar dele. Só monta o miolo
+ * quando abre: o seletor de catálogo busca o catálogo inteiro ao montar.
+ */
 export function NewEntry({ a }: { a: StayAccountState }) {
+  const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<"catalog" | "manual">("catalog");
+
+  if (!open) {
+    return (
+      <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 14 }}>
+        <Button variant="secondary" icon={Plus} fullWidth onClick={() => setOpen(true)}>
+          Lançar na conta
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
         <SectionTitle>Novo lançamento</SectionTitle>
-        <div style={{ display: "inline-flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12 }}>
-          {([["catalog", "Do catálogo"], ["manual", "Avulso"]] as const).map(([id, label]) => {
-            const sel = mode === id;
-            return (
-              <button key={id} type="button" className="ak-press ak-focus" onClick={() => setMode(id)}
-                style={{
-                  padding: "6px 12px", borderRadius: 9, fontSize: 10, fontWeight: 900, letterSpacing: ".06em",
-                  textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit",
-                  background: sel ? alpha(T.g1, 12) : "transparent",
-                  border: `1px solid ${sel ? T.g1Border : "transparent"}`,
-                  color: sel ? T.brandText : T.muted,
-                }}>
-                {label}
-              </button>
-            );
-          })}
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <div style={{ display: "inline-flex", gap: 4, padding: 4, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+            {([["catalog", "Do catálogo"], ["manual", "Avulso"]] as const).map(([id, label]) => {
+              const sel = mode === id;
+              return (
+                <button key={id} type="button" className="ak-press ak-focus" onClick={() => setMode(id)}
+                  style={{
+                    padding: "6px 12px", borderRadius: 9, fontSize: 10, fontWeight: 900, letterSpacing: ".06em",
+                    textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit",
+                    background: sel ? alpha(T.g1, 12) : "transparent",
+                    border: `1px solid ${sel ? T.g1Border : "transparent"}`,
+                    color: sel ? T.brandText : T.muted,
+                  }}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <IconButton icon={X} label="Fechar o lançamento" size="sm" variant="ghost" onClick={() => setOpen(false)} />
         </div>
       </div>
 

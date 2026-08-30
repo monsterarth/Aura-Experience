@@ -11,6 +11,7 @@
 // app aparece na conta sozinho — mesma fila, uma verdade só.
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
+import { FOLIO_CLOSED } from '@/lib/folio-guard';
 import { supabaseAdmin } from '@/lib/supabase';
 import { ConciergeService } from '@/services/concierge-service';
 
@@ -94,7 +95,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'action inválida ("launch" | "return" | "lost").' }, { status: 400 });
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Falha na operação.';
-        const status = (error as { code?: string })?.code === 'CONFLICT' ? 409 : 500;
+        const code = (error as { code?: string })?.code;
+        const status = code === 'CONFLICT' || code === FOLIO_CLOSED ? 409 : 500;
         console.error('[concierge/by-stay POST]', error);
         return NextResponse.json({ error: message }, { status });
     }

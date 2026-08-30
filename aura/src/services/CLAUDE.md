@@ -10,6 +10,15 @@ actions call services; **services don't import React**.
 - Keep logic here rather than in pages/routes (older large pages don't always follow this —
   see `../../docs/REFACTORING.md`).
 
+## Regra do fólio
+
+Toda escrita em `folio_items` passa por `assertFolioOpen(stayId)` (`@/lib/folio-guard`):
+conta com `billClosedAt` não recebe lançamento de ninguém — balcão, garçom, frigobar da
+camareira, concierge ou cron das diárias. Um caminho novo de cobrança que não chame o guard
+é um furo. As portas existentes são `StayService.addFolioItemManual`,
+`FinanceService.addPayment` e `FinanceService.postForStayRow` (esta pula em silêncio, é
+varredura); rotas traduzem o erro `FOLIO_CLOSED` para HTTP 409.
+
 ## Domains
 
 `stay` · `guest` · `cabin` · `structure` · `property` · `event` · `wedding` · `contact`

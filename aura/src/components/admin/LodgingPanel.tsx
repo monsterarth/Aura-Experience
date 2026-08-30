@@ -27,12 +27,14 @@ const fmtBR = (iso: string) => iso.split("-").reverse().join("/");
 const money = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function LodgingPanel({
-  propertyId, stayId, onChanged,
+  propertyId, stayId, onChanged, readOnly,
 }: {
   propertyId: string;
   stayId: string;
   /** Avisa o modal-pai para recarregar o fólio (valores mudaram). */
   onChanged: () => void;
+  /** Conta encerrada: as diárias viram extrato, sem pausa nem negociação. */
+  readOnly?: boolean;
 }) {
   const [nights, setNights] = useState<LodgingNight[]>([]);
   const [paused, setPaused] = useState(false);
@@ -161,12 +163,14 @@ export function LodgingPanel({
           <span className="text-[10px] text-muted-foreground">
             Total <b className="text-foreground">R$ {money(effectiveTotal)}</b>
           </span>
-          <button type="button" onClick={togglePause} disabled={busy}
-            className={cn("flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all disabled:opacity-50",
-              paused ? "bg-green-500/15 text-green-600 hover:bg-green-500/25"
-                     : "bg-amber-500/15 text-amber-600 hover:bg-amber-500/25")}>
-            {paused ? <><Play size={10} /> Retomar</> : <><Pause size={10} /> Pausar</>}
-          </button>
+          {!readOnly && (
+            <button type="button" onClick={togglePause} disabled={busy}
+              className={cn("flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all disabled:opacity-50",
+                paused ? "bg-green-500/15 text-green-600 hover:bg-green-500/25"
+                       : "bg-amber-500/15 text-amber-600 hover:bg-amber-500/25")}>
+              {paused ? <><Play size={10} /> Retomar</> : <><Pause size={10} /> Pausar</>}
+            </button>
+          )}
         </div>
       </div>
 
@@ -212,7 +216,7 @@ export function LodgingPanel({
                     <span title="Valor negociado" className="text-amber-500"><BadgePercent size={11} /></span>
                   )}
 
-                  <div className="flex items-center gap-0.5">
+                  <div className="flex items-center gap-0.5" hidden={readOnly}>
                     <button type="button" title="Alterar valor" disabled={busy}
                       onClick={() => { setEditing(n.date); setEditValue(String(n.value || n.baseValue)); }}
                       className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 disabled:opacity-50">
@@ -240,7 +244,11 @@ export function LodgingPanel({
         })}
       </div>
 
-      {!isManager && (
+      {readOnly ? (
+        <p className="px-3 py-2 text-[10px] text-muted-foreground bg-secondary/30 border-t border-border">
+          Conta encerrada — reabra a conta para mexer nas diárias.
+        </p>
+      ) : !isManager && (
         <p className="px-3 py-2 text-[10px] text-muted-foreground bg-secondary/30 border-t border-border">
           Alterações em diárias exigem autorização de um gerente.
         </p>

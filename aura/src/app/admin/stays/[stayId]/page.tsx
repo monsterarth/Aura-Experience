@@ -13,6 +13,7 @@ import { useStayDetail } from "./_components/useStayDetail";
 import { stayStatus } from "./_components/stay-detail-utils";
 import { HeroStrip, GuestCard, LodgingCard, TravelCard } from "./_components/StayDetailCards";
 import { TransferDialog, CheckoutKeyDialog } from "./_components/StayDialogs";
+import { StayTimeline } from "./_components/StayTimeline";
 import { StayOriginPills, StayRequestsCard } from "@/components/admin/StayOpsBlocks";
 import { useStayAccount } from "@/components/admin/folio/useStayAccount";
 import { StayAccountPanel } from "@/components/admin/folio/StayAccountPanel";
@@ -122,6 +123,7 @@ function StayDetailInner() {
               <LodgingCard s={s} />
               <TravelCard s={s} />
             </div>
+            <div className="no-print"><StayTimeline propertyId={s.propertyId} stayId={stay.id} /></div>
             {isEditing && <div className="ak-only-mobile no-print"><BottomActionBar>{editActions}</BottomActionBar></div>}
             <TransferDialog s={s} />
             <CheckoutKeyDialog s={s} />

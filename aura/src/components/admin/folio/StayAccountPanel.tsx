@@ -60,9 +60,15 @@ export function StayAccountPanel({ a, lodgingSlot, readOnly, showTotals = true }
       )}
 
       {closed && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 12, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green, fontSize: 12, fontWeight: 800 }}>
-          <CheckCircle2 size={14} />
-          Conta encerrada em {format(new Date(local.billClosedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: 12, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green, fontSize: 12, fontWeight: 800 }}>
+          <CheckCircle2 size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span style={{ minWidth: 0 }}>
+            Conta encerrada em {format(new Date(local.billClosedAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+            <span style={{ display: "block", fontWeight: 600, opacity: .85, marginTop: 2 }}>
+              Nenhum lançamento entra — nem pelo balcão, nem pelo frigobar, pelo garçom ou pelo concierge.
+              Reabra a conta para voltar a lançar.
+            </span>
+          </span>
         </div>
       )}
 
@@ -75,14 +81,14 @@ export function StayAccountPanel({ a, lodgingSlot, readOnly, showTotals = true }
             key={c.id}
             chip={c}
             active={resolving === c.id}
-            onClick={!readOnly && canResolve(c) ? () => setResolving(prev => (prev === c.id ? null : c.id)) : undefined}
+            onClick={!readOnly && canResolve(c, closed) ? () => setResolving(prev => (prev === c.id ? null : c.id)) : undefined}
           />
         ))}
       </div>
 
       {resolving && (
         <div style={{ border: `1px solid ${T.border}`, borderRadius: 14, padding: 14, background: T.glass, display: "flex", flexDirection: "column", gap: 12 }}>
-          {resolving === "payment" && (
+          {resolving === "payment" && !closed && (
             <>
               <SectionTitle>Quitar a conta</SectionTitle>
               <p style={{ margin: 0, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
@@ -105,16 +111,21 @@ export function StayAccountPanel({ a, lodgingSlot, readOnly, showTotals = true }
                   )}>
                   Chave devolvida
                 </Button>
-                <Field label="Cobrar no fólio (R$)" style={{ flex: "1 1 160px" }}>
-                  <Input inputMode="decimal" value={chargeAmount} onChange={e => setChargeAmount(e.target.value)} placeholder="0,00" />
-                </Field>
-                <Button variant="danger" loading={busy} disabled={!chargeAmount}
-                  onClick={() => void a.runResolve(
-                    () => StayService.resolveKey(propertyId, stayId, "charged", a.actorId, a.actorName, { amount: chargeValue() }),
-                    { keyStatus: "charged" },
-                  )}>
-                  Cobrar
-                </Button>
+                {closed && <ClosedNote>Para cobrar a chave, reabra a conta.</ClosedNote>}
+                {!closed && (
+                  <>
+                    <Field label="Cobrar no fólio (R$)" style={{ flex: "1 1 160px" }}>
+                      <Input inputMode="decimal" value={chargeAmount} onChange={e => setChargeAmount(e.target.value)} placeholder="0,00" />
+                    </Field>
+                    <Button variant="danger" loading={busy} disabled={!chargeAmount}
+                      onClick={() => void a.runResolve(
+                        () => StayService.resolveKey(propertyId, stayId, "charged", a.actorId, a.actorName, { amount: chargeValue() }),
+                        { keyStatus: "charged" },
+                      )}>
+                      Cobrar
+                    </Button>
+                  </>
+                )}
               </div>
             </>
           )}
@@ -131,16 +142,21 @@ export function StayAccountPanel({ a, lodgingSlot, readOnly, showTotals = true }
                   )}>
                   Devolvido
                 </Button>
-                <Field label="Cobrar no fólio (R$)" style={{ flex: "1 1 160px" }}>
-                  <Input inputMode="decimal" value={chargeAmount} onChange={e => setChargeAmount(e.target.value)} placeholder="0,00" />
-                </Field>
-                <Button variant="danger" loading={busy} disabled={!chargeAmount}
-                  onClick={() => void a.runResolve(
-                    () => StayService.resolveLoanedItems(propertyId, stayId, "charged", a.actorId, a.actorName, { amount: chargeValue() }),
-                    { loanedItemsStatus: "charged", loanedItemsChecked: true },
-                  )}>
-                  Cobrar
-                </Button>
+                {closed && <ClosedNote>Para cobrar o item, reabra a conta.</ClosedNote>}
+                {!closed && (
+                  <>
+                    <Field label="Cobrar no fólio (R$)" style={{ flex: "1 1 160px" }}>
+                      <Input inputMode="decimal" value={chargeAmount} onChange={e => setChargeAmount(e.target.value)} placeholder="0,00" />
+                    </Field>
+                    <Button variant="danger" loading={busy} disabled={!chargeAmount}
+                      onClick={() => void a.runResolve(
+                        () => StayService.resolveLoanedItems(propertyId, stayId, "charged", a.actorId, a.actorName, { amount: chargeValue() }),
+                        { loanedItemsStatus: "charged", loanedItemsChecked: true },
+                      )}>
+                      Cobrar
+                    </Button>
+                  </>
+                )}
               </div>
             </>
           )}
@@ -219,13 +235,22 @@ export function StayAccountPanel({ a, lodgingSlot, readOnly, showTotals = true }
   );
 }
 
-/** Sinal clicável só quando existe desfecho a dar. */
-function canResolve(c: AccountChip): boolean {
+/**
+ * Sinal clicável só quando existe desfecho a dar.
+ *
+ * Com a conta encerrada o pagamento sai da lista: encerrar COM saldo é uma
+ * decisão registrada, não uma pendência a quitar — quem mudou de ideia reabre.
+ */
+function canResolve(c: AccountChip, closed?: boolean): boolean {
   if (c.state === "idle") return false;
-  if (c.id === "payment") return c.state === "alert";
+  if (c.id === "payment") return !closed && c.state === "alert";
   if (c.id === "key") return c.state === "alert";
   if (c.id === "loaned") return c.state === "alert";
   return c.state === "alert" || c.state === "warn";
+}
+
+function ClosedNote({ children }: { children: React.ReactNode }) {
+  return <p style={{ margin: 0, flexBasis: "100%", fontSize: 11, color: T.muted }}>{children}</p>;
 }
 
 function ChipCard({ chip, active, onClick }: { chip: AccountChip; active: boolean; onClick?: () => void }) {

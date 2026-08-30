@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { StayService } from "@/services/stay-service";
 import { accountChips, openChips, type ChipId } from "@/lib/stay-account";
+import { FOLIO_CLOSED_MESSAGE, isFolioClosedError } from "@/lib/folio-guard";
 import type { ConciergeGroup, ConciergeItem } from "@/types/aura";
 import { useFolio, type UseFolioActor } from "./useFolio";
 
@@ -142,7 +143,11 @@ export function useStayAccount(
       onChanged?.();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
-      toast.error(msg.endsWith("_CHARGE_INVALID") ? "Informe um valor maior que zero." : "Não foi possível registrar.");
+      toast.error(
+        isFolioClosedError(e) ? FOLIO_CLOSED_MESSAGE
+          : msg.endsWith("_CHARGE_INVALID") ? "Informe um valor maior que zero."
+          : "Não foi possível registrar.",
+      );
     } finally {
       setBusy(false);
     }

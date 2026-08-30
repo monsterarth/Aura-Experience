@@ -6,6 +6,7 @@ import { supabase, db } from "@/lib/supabase";
 import { ConciergeGroup, ConciergeItem, ConciergeRequest } from "@/types/aura";
 import { AuditService } from "./audit-service";
 import { StayService } from "./stay-service";
+import { assertFolioOpen } from '@/lib/folio-guard';
 import { StockIntegration, StockLevels } from "./stock-integration";
 
 export const ConciergeService = {
@@ -469,6 +470,11 @@ export const ConciergeService = {
       totalPrice = (item.price || 0) * req.quantity;
     }
 
+    // 2b. Conta encerrada não recebe lançamento — e a checagem vem ANTES de
+    // marcar entregue e baixar estoque: falhar no passo 5 deixaria o pedido
+    // fechado, o estoque baixado e a cobrança sumida.
+    if (totalPrice > 0) await assertFolioOpen(req.stayId);
+
     // 3. Update request — condicional ao status para o toque duplo não cobrar
     // fólio nem baixar estoque duas vezes. Aceita 'pending' de propósito: o
     // launchFrigobar cria e entrega direto, sem passar por 'in_progress'.
@@ -586,6 +592,10 @@ export const ConciergeService = {
       .eq('id', req.itemId)
       .single();
     const item = itemRow as ConciergeItem;
+
+    // Extravio cobra o valor de perda: se a conta está encerrada, para aqui —
+    // antes de marcar 'lost' e baixar o estoque.
+    if (item?.loss_price && item.loss_price > 0) await assertFolioOpen(req.stayId);
 
     // 2. Update status (db(): idem returnRequest — anon no servidor não escreve)
     const { error: updErr } = await db()
@@ -728,6 +738,10 @@ export const ConciergeService = {
     actorId: string,
     actorName: string,
   ): Promise<number> {
+    // A trava vem antes do laço: `createRequest` já grava a linha, e falhar só na
+    // entrega deixaria um pedido pendente órfão para cada item do carrinho.
+    await assertFolioOpen(params.stayId);
+
     let launched = 0;
     for (const [itemId, qty] of Object.entries(params.cart)) {
       if (!qty || qty <= 0) continue;
