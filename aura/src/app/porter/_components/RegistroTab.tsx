@@ -313,6 +313,12 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
   const targets = g.targets;
   const chosenStaff = targets?.staff.find(x => x.id === staffId) ?? null;
   const chosenSupplier = targets?.suppliers.find(x => x.id === supplierId) ?? null;
+  const supplierQuery = pickQuery.trim().toLowerCase();
+  // Teto de 8: a lista é para escolher, não para navegar. Se não apareceu, é
+  // caso de digitar mais uma letra.
+  const supplierMatches = (targets?.suppliers ?? [])
+    .filter(x => x.name.toLowerCase().includes(supplierQuery))
+    .slice(0, 8);
 
   const value = parseFloat((amount || "0").replace(",", "."));
   const canSubmit =
@@ -424,9 +430,11 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
             </>
           )}
 
-          {chosenStay && kind === "guest" && (
+          {chosenStay && (
             <div style={{ fontSize: 11.5, color: T.muted2, lineHeight: 1.5 }}>
-              A placa fica ligada a esta reserva — na próxima entrada o sistema já reconhece.
+              {kind === "guest"
+                ? "A placa fica ligada a esta reserva — na próxima entrada o sistema já reconhece."
+                : "A visita fica registrada na RESERVA, não na cabana: se o hóspede trocar de cabana, o registro vai junto."}
             </div>
           )}
         </div>
@@ -498,18 +506,29 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
             <div style={waitStyle}>Carregando fornecedores…</div>
           ) : (
             <>
-              {targets.suppliers.length > 6 && (
-                <input value={pickQuery} onChange={e => setPickQuery(e.target.value)} placeholder="Buscar fornecedor" style={searchStyle} />
-              )}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
-                {targets.suppliers
-                  .filter(x => !pickQuery.trim() || x.name.toLowerCase().includes(pickQuery.trim().toLowerCase()))
-                  .map(x => (
+              {/* São dezenas de fornecedores cadastrados e a maioria nunca põe o
+                  pé aqui. Rolar a lista inteira no portão é pior que digitar:
+                  duas letras já cortam para o punhado que interessa. */}
+              <input
+                value={pickQuery} onChange={e => setPickQuery(e.target.value)}
+                placeholder="Digite o nome do fornecedor" style={searchStyle}
+                autoCapitalize="words" autoCorrect="off"
+              />
+              {supplierQuery.length < 2 ? (
+                <div style={waitStyle}>
+                  {targets.suppliers.length} fornecedores cadastrados — digite duas letras para achar.
+                </div>
+              ) : supplierMatches.length === 0 ? (
+                <div style={waitStyle}>Nenhum fornecedor com esse nome.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                  {supplierMatches.map(x => (
                     <button key={x.id} onClick={() => setSupplierId(x.id)} style={rowStyle}>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{x.name}</span>
                     </button>
                   ))}
-              </div>
+                </div>
+              )}
               <button onClick={() => setFreeSupplier(true)} style={linkStyle}>Não está na lista — digitar o nome</button>
             </>
           )}

@@ -228,6 +228,20 @@ faturamento), busca por placa e cadastro de entregas.
 A fase 1 sozinha já elimina trabalho diário de duas equipes. É a primeira entrega
 do AURA que **tira** um processo do HMAX em vez de duplicá-lo.
 
+## Decidido em uso (28-29/08/2026)
+
+- **Visita pertence à ESTADIA, não à cabana.** O movimento guarda `stayId`. A cabana aparece na
+  tela porque é como o guarita acha a reserva — mas se o hóspede trocar de cabana, o registro da
+  visita vai junto com ele. A placa do visitante NUNCA é gravada em `stays.vehiclePlate`: aquele
+  campo é do hóspede.
+- **Fornecedor se escolhe digitando.** São 42 cadastrados na Fazenda do Rosa e a maioria nunca põe
+  o pé aqui: rolar a lista no portão é pior que digitar. Duas letras filtram, o teto é 8 resultados,
+  e sempre há a saída "não está na lista — digitar o nome". **Próximo passo:** um filtro de "mais
+  frequentes" no topo, medido pelo próprio histórico de `vehicle_movements`, para o punhado que
+  entrega toda semana aparecer sem digitar nada.
+- **`suppliers` é tabela do módulo de Estoque** — a dependência é suave: pousada sem Estoque recebe
+  lista vazia e cai no nome digitado (regra 2 de `MODULARIZATION.md`).
+
 ## Fora de escopo
 
 - **Controle de vagas** — decidido: só registro.
