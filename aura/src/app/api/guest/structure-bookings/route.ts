@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "@/services/audit-service";
+import { isUnitInMaintenance } from "@/services/structure-service";
 
 export async function DELETE(request: NextRequest) {
     try {
@@ -146,19 +147,28 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Liberação diária: estruturas marcadas (ex: jacuzzi) ficam bloqueadas para o
-        // hóspede até a recepção liberar para a data. Liberada só quando releasedForDate
-        // === a data da reserva. Bloqueia apenas o portal do hóspede (não a recepção).
+        // Duas travas distintas na mesma leitura da estrutura:
+        //  • Liberação diária — estruturas marcadas (ex: jacuzzi) ficam bloqueadas para o
+        //    hóspede até a recepção liberar para a data (releasedForDate === data da reserva).
+        //  • Unidade fora de operação — persistente, por unidade, até alguém devolver.
+        // Ambas valem só para o portal do hóspede; a recepção continua podendo lançar.
         if (booking.structureId && booking.date) {
             const { data: structRelease } = await supabaseAdmin
                 .from('structures')
-                .select('requiresDailyRelease, releasedForDate')
+                .select('requiresDailyRelease, releasedForDate, unitStatus')
                 .eq('id', booking.structureId)
                 .single();
 
             if (structRelease?.requiresDailyRelease && structRelease.releasedForDate !== booking.date) {
                 return NextResponse.json(
                     { error: "Esta área ainda não foi liberada pela recepção hoje. Fale com a recepção para reservar." },
+                    { status: 409 }
+                );
+            }
+
+            if (isUnitInMaintenance(structRelease?.unitStatus, booking.unitId)) {
+                return NextResponse.json(
+                    { error: "Esta unidade está em manutenção. Escolha outra unidade ou fale com a recepção." },
                     { status: 409 }
                 );
             }

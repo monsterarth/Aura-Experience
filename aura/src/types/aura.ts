@@ -288,6 +288,10 @@ export interface Structure {
   };
   imageUrl?: string;
   units?: { id: string; name: string; imageUrl?: string }[];
+  // Estado operacional POR UNIDADE, indexado pelo id da unidade. Unidade ausente do mapa
+  // conta como disponível — só a que saiu de operação ganha chave. Persiste até alguém
+  // devolver à operação (não reseta à meia-noite, ao contrário de releasedForDate).
+  unitStatus?: Record<string, StructureUnitState>;
   bookingType: 'fixed_slots' | 'free_time';
   requiresTurnover: boolean; // Does it require housekeeping after use?
   // Liberação diária: estrutura fica bloqueada por padrão a cada dia (ex: jacuzzi que
@@ -308,6 +312,15 @@ export interface Structure {
   amenities?: string[];                                                 // comodidades da área
   photos?: string[];                                                   // galeria de fotos da área
   createdAt?: Timestamp;
+}
+
+// Uma unidade fora de operação (ex: jacuzzi com a bomba queimada). Diferente da liberação
+// diária: aquela é preparo do dia e volta a bloquear sozinha; esta vale até ser revogada.
+export interface StructureUnitState {
+  status: 'maintenance';
+  note?: string;      // motivo, mostrado ao staff e (resumido) ao hóspede
+  since?: string;     // ISO — quando saiu de operação
+  byName?: string;    // quem marcou
 }
 
 export interface TimeSlot {
@@ -958,6 +971,7 @@ export interface AuditLog {
   | 'CONTACT_UPDATED' | 'CONTACT_DELETED' | 'CONTACT_PHONE_MIGRATED'
   | 'STRUCTURE_CREATED' | 'STRUCTURE_UPDATED' | 'STRUCTURE_DELETED'
   | 'STRUCTURE_RELEASED' | 'STRUCTURE_BLOCKED'
+  | 'STRUCTURE_UNIT_MAINTENANCE' | 'STRUCTURE_UNIT_RESTORED'
   | 'STRUCTURE_BOOKING_CREATED' | 'STRUCTURE_BOOKING_STATUS_CHANGED'
   | 'EVENT_CREATED' | 'EVENT_UPDATED' | 'EVENT_DELETED' | 'EVENT_PUBLISHED'
   | 'CONCIERGE_REQUESTED' | 'CONCIERGE_DELIVERED' | 'CONCIERGE_RETURNED' | 'CONCIERGE_LOST'

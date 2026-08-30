@@ -3,12 +3,12 @@
 import React from "react";
 import { format, addDays, subDays, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, CalendarDays, MapPin, Plus, Info, Wrench, Lock, Unlock, User, X, Building2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays, MapPin, Plus, Info, Wrench, Lock, Unlock, User, X, Building2, RotateCcw } from "lucide-react";
 import { StructureService } from "@/services/structure-service";
 import { T, tone as toneOf } from "@/lib/admin-tokens";
 import { PageShell, PageHeader, Card, Button, IconButton, Pill, Loadable, SkeletonList, EmptyState, ErrorState } from "@/components/aura";
 import { useBookings } from "./_components/useBookings";
-import { CreateBookingDialog, CancelBookingDialog, SlotActionsDialog } from "./_components/BookingDialogs";
+import { CreateBookingDialog, CancelBookingDialog, SlotActionsDialog, UnitMaintenanceDialog } from "./_components/BookingDialogs";
 import { STATUS_LABEL, STATUS_TONE, bookingDisplayName } from "./_components/bookings-utils";
 
 export default function StructureBookingsPage() {
@@ -69,23 +69,46 @@ export default function StructureBookingsPage() {
                 {items.map((item, idx) => {
                   const itemBookings = structBookings.filter(b => (item.unitId ? b.unitId === item.unitId : !b.unitId));
                   const slots = structure.bookingType === "fixed_slots" ? StructureService.generateTimeSlots(structure, structBookings, item.unitId) : [];
+                  // Unidade fora de operação: some da agenda até alguém devolver — não
+                  // precisa (nem adianta) bloquear horário por horário todo dia.
+                  const unitMaint = item.unitId ? structure.unitStatus?.[item.unitId] : undefined;
                   return (
                     <div key={item.unitId || idx} style={{ padding: 16, borderTop: idx > 0 ? `1px solid ${T.border}` : undefined, display: "flex", flexDirection: "column", gap: 14 }}>
                       {hasUnits && (
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 10, alignSelf: "flex-start", padding: "6px 12px 6px 6px", borderRadius: 14, background: T.glass, border: `1px solid ${T.border}` }}>
-                          {item.imageUrl ? (
-                            <img src={item.imageUrl} alt="" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover" }} />
-                          ) : (
-                            <span style={{ width: 36, height: 36, borderRadius: 10, background: T.card, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}><MapPin size={14} /></span>
-                          )}
-                          <div>
-                            <div style={{ fontSize: 13, fontWeight: 800, color: T.text }}>{item.unitName}</div>
-                            <div style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: ".1em" }}>Unidade</div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, padding: "6px 12px 6px 6px", borderRadius: 14, background: T.glass, border: `1px solid ${unitMaint ? T.redBorder : T.border}` }}>
+                            {item.imageUrl ? (
+                              <img src={item.imageUrl} alt="" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", opacity: unitMaint ? .45 : 1 }} />
+                            ) : (
+                              <span style={{ width: 36, height: 36, borderRadius: 10, background: T.card, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}><MapPin size={14} /></span>
+                            )}
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: T.text }}>{item.unitName}</div>
+                              <div style={{ fontSize: 10, color: unitMaint ? T.red : T.muted, textTransform: "uppercase", letterSpacing: ".1em", fontWeight: unitMaint ? 900 : undefined }}>
+                                {unitMaint ? "Fora de operação" : "Unidade"}
+                              </div>
+                            </div>
                           </div>
+                          {unitMaint
+                            ? <Button variant="soft" tone="green" size="sm" icon={RotateCcw} onClick={() => bk.restoreUnit(structure, item.unitId!, item.unitName)}>Voltar a operar</Button>
+                            : <Button variant="ghost" tone="red" size="sm" icon={Wrench} onClick={() => bk.openUnitMaintenance(structure, item.unitId!, item.unitName)}>Tirar de operação</Button>}
                         </div>
                       )}
 
-                      {structure.bookingType === "free_time" ? (
+                      {unitMaint ? (
+                        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: 14, borderRadius: 14, border: `1px solid ${T.redBorder}`, background: T.redBg }}>
+                          <Wrench size={16} color={T.red} style={{ marginTop: 2, flexShrink: 0 }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 900, color: T.text }}>{unitMaint.note || "Sem motivo registrado."}</div>
+                            <p style={{ margin: "3px 0 0", fontSize: 11, color: T.muted }}>
+                              {[unitMaint.since ? `Desde ${format(new Date(unitMaint.since), "dd/MM", { locale: ptBR })}` : null, unitMaint.byName].filter(Boolean).join(" · ")}
+                            </p>
+                            <p style={{ margin: "8px 0 0", fontSize: 11.5, color: T.muted, lineHeight: 1.45 }}>
+                              Não aparece para o hóspede e vale até alguém devolver à operação — não precisa bloquear horário por horário todo dia.
+                            </p>
+                          </div>
+                        </div>
+                      ) : structure.bookingType === "free_time" ? (
                         <Button variant="outline" icon={Plus} onClick={() => bk.openCreate(structure.id, item.unitId, true)} style={{ alignSelf: "flex-start" }}>Nova reserva manual</Button>
                       ) : (
                         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-2">
@@ -121,7 +144,9 @@ export default function StructureBookingsPage() {
                           <h3 style={{ margin: 0, fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".1em", color: T.muted }}>Agenda do dia ({itemBookings.length})</h3>
                           {itemBookings.map(b => {
                             const isBlock = b.type === "maintenance_block";
-                            const canCancel = structure.bookingType === "free_time" && (b.status === "approved" || isBlock);
+                            // Em fixed_slots o cancelamento sai do próprio slot — mas a grade some quando a
+                            // unidade está fora de operação, então o que já estava marcado ficaria sem saída.
+                            const canCancel = (structure.bookingType === "free_time" || !!unitMaint) && (b.status === "approved" || isBlock);
                             return (
                               <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: `1px solid ${isBlock ? T.redBorder : T.border}`, background: isBlock ? T.redBg : T.glass }}>
                                 <Pill tone={isBlock ? "red" : STATUS_TONE[b.status] ?? "neutral"} label={isBlock ? "Manutenção" : STATUS_LABEL[b.status] ?? b.status} />
@@ -149,6 +174,7 @@ export default function StructureBookingsPage() {
       <CreateBookingDialog bk={bk} />
       <CancelBookingDialog bk={bk} />
       <SlotActionsDialog bk={bk} />
+      <UnitMaintenanceDialog bk={bk} />
     </PageShell>
   );
 }

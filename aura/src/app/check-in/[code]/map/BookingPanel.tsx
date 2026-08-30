@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Loader2, Clock, CheckCircle2, Info, Lock } from "lucide-react";
+import { Loader2, Clock, CheckCircle2, Info, Lock, Wrench } from "lucide-react";
 import { toast } from "sonner";
-import { StructureService } from "@/services/structure-service";
+import { StructureService, isUnitInMaintenance } from "@/services/structure-service";
 import { Stay, Property, TimeSlot, StructureBooking } from "@/types/aura";
 import { MapArea, MapLang } from "./types";
 import { localizedName } from "./utils/localize";
@@ -18,6 +18,9 @@ const T: Record<MapLang, Record<string, string>> = {
         bookAnother: "Reservar outro horário", closed: "Encerrado", error: "Erro ao reservar. Tente outro horário.",
         locked: "Aguardando liberação da recepção",
         lockedDesc: "Esta área é preparada diariamente antes de liberar. Assim que estiver pronta, a recepção libera a reserva.",
+        maintenance: "Em manutenção",
+        maintTitle: "Em manutenção",
+        maintDesc: "Esta área está temporariamente fora de operação. Fale com a recepção se precisar de ajuda.",
     },
     en: {
         today: "Today", schedule: "Today's schedule", noSlots: "No slots available today.",
@@ -28,6 +31,9 @@ const T: Record<MapLang, Record<string, string>> = {
         bookAnother: "Book another time", closed: "Closed", error: "Booking failed. Try another time.",
         locked: "Awaiting front desk release",
         lockedDesc: "This area is prepared daily before it opens. The front desk will release booking once it's ready.",
+        maintenance: "Under maintenance",
+        maintTitle: "Under maintenance",
+        maintDesc: "This area is temporarily out of service. Please talk to the front desk if you need anything.",
     },
     es: {
         today: "Hoy", schedule: "Agenda del día", noSlots: "No hay horarios disponibles hoy.",
@@ -38,6 +44,9 @@ const T: Record<MapLang, Record<string, string>> = {
         bookAnother: "Reservar otro horario", closed: "Cerrado", error: "Error al reservar. Prueba otro horario.",
         locked: "Esperando liberación de recepción",
         lockedDesc: "Esta área se prepara cada día antes de abrir. Recepción liberará la reserva cuando esté lista.",
+        maintenance: "En mantenimiento",
+        maintTitle: "En mantenimiento",
+        maintDesc: "Esta área está temporalmente fuera de servicio. Habla con recepción si necesitas ayuda.",
     },
 };
 
@@ -56,12 +65,17 @@ export function BookingPanel({ area, stay, property, lang, onBooked }: BookingPa
     // Liberação diária: bloqueada para o hóspede até a recepção liberar para hoje.
     const awaitingRelease = !!area.requiresDailyRelease && area.releasedForDate !== today;
 
+    // Unidades fora de operação (ex: uma das duas jacuzzis quebrada). Estado persistente,
+    // independente da liberação do dia: a unidade aparece no seletor, porém desabilitada.
+    const units = area.units ?? [];
+    const downUnits = units.filter(u => isUnitInMaintenance(area.unitStatus, u.id));
+    const openUnits = units.filter(u => !isUnitInMaintenance(area.unitStatus, u.id));
+    const allUnitsDown = units.length > 0 && openUnits.length === 0;
+
     const [slots, setSlots] = useState<TimeSlot[]>([]);
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<TimeSlot | null>(null);
-    const [unit, setUnit] = useState<{ id: string; name: string } | null>(
-        area.units && area.units.length > 0 ? area.units[0] : null
-    );
+    const [unit, setUnit] = useState<{ id: string; name: string } | null>(openUnits[0] ?? null);
     const [saving, setSaving] = useState(false);
     const [success, setSuccess] = useState(false);
 
@@ -154,6 +168,18 @@ export function BookingPanel({ area, stay, property, lang, onBooked }: BookingPa
         );
     }
 
+    if (allUnitsDown) {
+        return (
+            <div className="flex flex-col items-center text-center py-8 px-4">
+                <div className="w-16 h-16 bg-secondary text-muted-foreground rounded-full flex items-center justify-center mb-4">
+                    <Wrench size={28} />
+                </div>
+                <h3 className="text-base font-black text-foreground">{t.maintTitle}</h3>
+                <p className="text-sm text-muted-foreground mt-1.5 max-w-xs">{t.maintDesc}</p>
+            </div>
+        );
+    }
+
     if (awaitingRelease) {
         return (
             <div className="flex flex-col items-center text-center py-8 px-4">
@@ -169,16 +195,30 @@ export function BookingPanel({ area, stay, property, lang, onBooked }: BookingPa
     return (
         <div className="space-y-4">
             {/* Unidade (se houver) */}
-            {area.units && area.units.length > 0 && (
+            {units.length > 0 && (
                 <div>
                     <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.unit}</label>
                     <select
                         value={unit?.id ?? ""}
-                        onChange={e => setUnit(area.units!.find(u => u.id === e.target.value) ?? null)}
+                        onChange={e => setUnit(openUnits.find(u => u.id === e.target.value) ?? null)}
                         className="w-full mt-1 bg-card border border-border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-primary/50"
                     >
-                        {area.units.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        {units.map(u => {
+                            const down = isUnitInMaintenance(area.unitStatus, u.id);
+                            return <option key={u.id} value={u.id} disabled={down}>{down ? `${u.name} · ${t.maintenance}` : u.name}</option>;
+                        })}
                     </select>
+                    {downUnits.length > 0 && (
+                        <p className="mt-1.5 flex items-start gap-1.5 text-[11.5px] text-muted-foreground">
+                            <Wrench size={12} className="shrink-0 mt-0.5" />
+                            <span>
+                                {downUnits.map(u => {
+                                    const note = area.unitStatus?.[u.id]?.note;
+                                    return `${u.name}: ${note || t.maintenance.toLowerCase()}`;
+                                }).join(" · ")}
+                            </span>
+                        </p>
+                    )}
                 </div>
             )}
 

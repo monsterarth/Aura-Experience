@@ -2,7 +2,7 @@
 
 import React from "react";
 import { format } from "date-fns";
-import { Check, X, Wrench, User, CheckCircle2, Ban } from "lucide-react";
+import { Check, X, Wrench, User, CheckCircle2, Ban, Info } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { Dialog, SegmentedTabs, Field, FieldRow, Input, Select, Textarea, Button, Pill } from "@/components/aura";
 import type { useBookings } from "./useBookings";
@@ -83,6 +83,53 @@ export function CancelBookingDialog({ bk }: { bk: Bk }) {
         <p style={{ margin: 0, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>Informe o motivo do cancelamento. Se configurado, o hóspede receberá uma mensagem no WhatsApp.</p>
         <Field label="Motivo do cancelamento" required>
           <Textarea value={bk.cancelReason} onChange={e => bk.setCancelReason(e.target.value)} rows={3} autoGrow autoFocus placeholder="Ex: Condições climáticas adversas, manutenção emergencial..." />
+        </Field>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Tira uma unidade de operação — estado PERSISTENTE, não a liberação do dia.
+ * Pede o motivo porque ele é o que a equipe (e o hóspede) lê enquanto durar.
+ */
+export function UnitMaintenanceDialog({ bk }: { bk: Bk }) {
+  const t = bk.unitTarget;
+  // Reservas do dia que ficam órfãs nesta unidade — a recepção precisa avisar esses hóspedes.
+  const affected = t
+    ? bk.bookings.filter(b => b.structureId === t.structure.id && b.unitId === t.unitId
+        && b.type === "booking" && (b.status === "approved" || b.status === "pending")).length
+    : 0;
+  return (
+    <Dialog
+      open={!!t}
+      onClose={() => { if (!bk.savingUnit) bk.setUnitTarget(null); }}
+      presentation="auto"
+      size="sm"
+      title="Tirar unidade de operação"
+      subtitle={t ? `${t.structure.name} · ${t.unitName}` : undefined}
+      footerRow
+      footer={(
+        <>
+          <Button variant="ghost" onClick={() => bk.setUnitTarget(null)} disabled={bk.savingUnit}>Voltar</Button>
+          <Button variant="danger-solid" icon={Wrench} disabled={!bk.unitNote.trim()} loading={bk.savingUnit} loadingText="Salvando…" onClick={bk.confirmUnitMaintenance}>Tirar de operação</Button>
+        </>
+      )}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <p style={{ margin: 0, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
+          A unidade sai da agenda e do portal do hóspede <strong style={{ color: T.text }}>até alguém devolvê-la à operação</strong> — não volta sozinha à meia-noite e não precisa ser bloqueada horário por horário todo dia. As outras unidades da estrutura seguem normalmente.
+        </p>
+        {affected > 0 && (
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, border: `1px solid ${T.orangeBorder}`, background: T.orangeBg }}>
+            <Info size={15} color={T.orange} style={{ marginTop: 1, flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, color: T.text, lineHeight: 1.45 }}>
+              {affected === 1 ? "Há 1 reserva de hóspede" : `Há ${affected} reservas de hóspede`} hoje nesta unidade. Elas continuam na agenda do dia para você cancelar e avisar quem reservou.
+            </span>
+          </div>
+        )}
+        <Field label="Motivo" required hint="Aparece para a equipe na agenda e, resumido, para o hóspede no portal.">
+          <Textarea value={bk.unitNote} onChange={e => bk.setUnitNote(e.target.value)} rows={3} autoGrow autoFocus placeholder="Ex: bomba queimada, aguardando peça..." />
         </Field>
       </div>
     </Dialog>

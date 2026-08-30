@@ -1,11 +1,12 @@
 "use client";
 
 import React from "react";
-import { ChevronRight, CalendarClock, Bell, Lock } from "lucide-react";
+import { ChevronRight, CalendarClock, Bell, Lock, Wrench } from "lucide-react";
 import { MapArea, MapLang } from "../types";
 import { OpenBadge } from "./OpenBadge";
 import { formatHours, isOpenNow } from "../utils/hours";
 import { localizedName } from "../utils/localize";
+import { isUnitInMaintenance } from "@/services/structure-service";
 
 // Áreas que o hóspede pode agendar direto pelo portal.
 const isBookable = (a: MapArea) =>
@@ -15,6 +16,9 @@ const isReceptionOnly = (a: MapArea) => a.visibility === "admin_only";
 // Área de liberação diária ainda não liberada para hoje (bloqueada ao hóspede).
 const isAwaitingRelease = (a: MapArea) =>
     !!a.requiresDailyRelease && a.releasedForDate !== new Date().toISOString().split("T")[0];
+// Todas as unidades fora de operação — a área inteira não tem o que agendar.
+const isFullyDown = (a: MapArea) =>
+    !!a.units?.length && a.units.every(u => isUnitInMaintenance(a.unitStatus, u.id));
 
 interface AreaRowProps {
     area: MapArea;
@@ -25,6 +29,7 @@ interface AreaRowProps {
     bookableLabel: string;
     receptionLabel: string;
     awaitingReleaseLabel: string;
+    maintenanceLabel: string;
     onClick: (area: MapArea) => void;
 }
 
@@ -34,9 +39,10 @@ function iconStyle(hex?: string): React.CSSProperties | undefined {
     return { background: `${hex}22` };
 }
 
-export function AreaRow({ area, lang, openLabel, closedLabel, label24h, bookableLabel, receptionLabel, awaitingReleaseLabel, onClick }: AreaRowProps) {
-    const awaiting = isBookable(area) && isAwaitingRelease(area);
-    const bookable = isBookable(area) && !awaiting;
+export function AreaRow({ area, lang, openLabel, closedLabel, label24h, bookableLabel, receptionLabel, awaitingReleaseLabel, maintenanceLabel, onClick }: AreaRowProps) {
+    const down = isBookable(area) && isFullyDown(area);
+    const awaiting = isBookable(area) && !down && isAwaitingRelease(area);
+    const bookable = isBookable(area) && !awaiting && !down;
     const reception = isReceptionOnly(area);
     const open = isOpenNow(area.operatingHours);
     const hours = formatHours(area.operatingHours, label24h);
@@ -59,7 +65,11 @@ export function AreaRow({ area, lang, openLabel, closedLabel, label24h, bookable
             <span className="flex-1 min-w-0">
                 <span className="block font-bold text-[14.5px] truncate text-foreground">{localizedName(area, lang)}</span>
                 <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                    {awaiting ? (
+                    {down ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full font-bold px-2 py-0.5 text-[11px] text-muted-foreground bg-secondary shrink-0">
+                            <Wrench size={11} /> {maintenanceLabel}
+                        </span>
+                    ) : awaiting ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full font-bold px-2 py-0.5 text-[11px] text-muted-foreground bg-secondary shrink-0">
                             <Lock size={11} /> {awaitingReleaseLabel}
                         </span>

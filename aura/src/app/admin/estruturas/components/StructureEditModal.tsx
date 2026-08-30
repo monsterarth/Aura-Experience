@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Save, Clock, Users, Activity, ImagePlus, Trash2, Plus, Calendar, Bot, MapPin, Globe } from "lucide-react";
+import { Save, Clock, Users, Activity, ImagePlus, Trash2, Plus, Calendar, Bot, MapPin, Globe, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
@@ -382,8 +382,16 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                                     {unit.imageUrl ? <img src={unit.imageUrl} alt={unit.name} className="w-full h-full object-cover" /> : <ImagePlus className="text-muted-foreground group-hover:text-primary transition-colors" size={14} />}
                                                     <input type="file" accept="image/*" onChange={e => handleImageUpload(e, unit.id)} className="absolute inset-0 opacity-0 cursor-pointer z-10" disabled={loading} title="Anexar foto" />
                                                 </div>
-                                                <div className="flex-1">
+                                                <div className="flex-1 min-w-0">
                                                     <input type="text" value={unit.name} onChange={e => updateUnitName(unit.id, e.target.value)} className="w-full bg-transparent border-none p-0 text-sm font-bold text-foreground focus:ring-0 outline-none placeholder:font-normal" placeholder="Nome da Unidade…" />
+                                                    {/* Somente leitura: quem tira/devolve a unidade é a Agenda de Estruturas
+                                                        (fonte única de escrita do unitStatus — este modal nunca o grava). */}
+                                                    {formData.unitStatus?.[unit.id]?.status === "maintenance" && (
+                                                        <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-red-500/10 text-red-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider">
+                                                            <Wrench size={10} /> Fora de operação
+                                                            {formData.unitStatus[unit.id].note ? <span className="font-semibold normal-case tracking-normal opacity-80">· {formData.unitStatus[unit.id].note}</span> : null}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 <button type="button" onClick={() => removeUnit(unit.id)} className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"><Trash2 size={16} /></button>
                                             </div>

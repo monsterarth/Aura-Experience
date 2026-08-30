@@ -1,6 +1,17 @@
 import { supabase, supabaseAdmin } from "@/lib/supabase";
-import { Structure, StructureBooking, TimeSlot } from "@/types/aura";
+import { Structure, StructureBooking, StructureUnitState, TimeSlot } from "@/types/aura";
 import { AuditService } from "./audit-service";
+
+// Regra única de "esta unidade está fora de operação". Usada pela agenda do admin, pelo
+// portal do hóspede e pela rota que grava a reserva — todas leem daqui para não divergir.
+// Estrutura sem unidades nunca cai neste caminho (o estado é por unidade, não por estrutura).
+export function isUnitInMaintenance(
+    unitStatus: Structure["unitStatus"] | null | undefined,
+    unitId?: string | null
+): boolean {
+    if (!unitId) return false;
+    return unitStatus?.[unitId]?.status === "maintenance";
+}
 
 export const StructureService = {
 
@@ -167,6 +178,55 @@ export const StructureService = {
                 ? `Estrutura${label} liberada para uso em ${date}.`
                 : `Estrutura${label} rebloqueada (liberação diária revogada).`
         });
+    },
+
+    // Tira uma unidade de operação (ou devolve). Persistente: ao contrário da liberação
+    // diária, fica marcada até alguém revogar — é o que evita relançar bloqueios todo dia.
+    // Relê o mapa atual antes de gravar: o estado na tela da recepção pode estar velho.
+    async setUnitStatus(
+        propertyId: string,
+        structureId: string,
+        unitId: string,
+        state: StructureUnitState | null,
+        actorId: string,
+        actorName: string,
+        labels?: { structureName?: string; unitName?: string }
+    ): Promise<Record<string, StructureUnitState>> {
+        const { data: current, error: readError } = await supabase
+            .from('structures')
+            .select('unitStatus')
+            .eq('id', structureId)
+            .eq('propertyId', propertyId)
+            .single();
+
+        if (readError) throw readError;
+
+        const next: Record<string, StructureUnitState> = { ...(current?.unitStatus ?? {}) };
+        if (state) next[unitId] = state;
+        else delete next[unitId];
+
+        const { error } = await supabase
+            .from('structures')
+            .update({ unitStatus: next })
+            .eq('id', structureId)
+            .eq('propertyId', propertyId);
+
+        if (error) throw error;
+
+        const where = [labels?.structureName, labels?.unitName].filter(Boolean).join(' / ') || unitId;
+        await AuditService.log({
+            propertyId,
+            userId: actorId,
+            userName: actorName,
+            action: state ? "STRUCTURE_UNIT_MAINTENANCE" : "STRUCTURE_UNIT_RESTORED",
+            entity: "STRUCTURE",
+            entityId: structureId,
+            details: state
+                ? `Unidade ${where} fora de operação${state.note ? `: ${state.note}` : '.'}`
+                : `Unidade ${where} devolvida à operação.`
+        });
+
+        return next;
     },
 
     async deleteStructure(propertyId: string, structureId: string, actorId: string, actorName: string): Promise<void> {

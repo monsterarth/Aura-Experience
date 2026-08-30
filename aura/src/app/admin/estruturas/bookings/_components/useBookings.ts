@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { StructureService } from "@/services/structure-service";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
-import type { Structure, StructureBooking, TimeSlot } from "@/types/aura";
+import type { Structure, StructureBooking, StructureUnitState, TimeSlot } from "@/types/aura";
 import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import type { StayLite } from "./bookings-utils";
 
@@ -15,6 +15,7 @@ export type ModalState = { structureId: string; unitId?: string; isFreeTime?: bo
 export type BookingType = "booking" | "maintenance_block";
 export type CancelTarget = { booking: StructureBooking; structureId: string; requiresTurnover: boolean };
 export type SlotTarget = { booking: StructureBooking; structure: Structure };
+export type UnitMaintenanceTarget = { structure: Structure; unitId: string; unitName: string };
 
 export function useBookings() {
   const { currentProperty } = useProperty();
@@ -43,6 +44,11 @@ export function useBookings() {
   const [cancelling, setCancelling] = useState(false);
   const [slotTarget, setSlotTarget] = useState<SlotTarget | null>(null);
   const [busyBookingId, setBusyBookingId] = useState<string | null>(null);
+
+  // Unidade fora de operação (persistente — não confundir com a liberação do dia)
+  const [unitTarget, setUnitTarget] = useState<UnitMaintenanceTarget | null>(null);
+  const [unitNote, setUnitNote] = useState("");
+  const [savingUnit, setSavingUnit] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!currentProperty) return;
@@ -108,6 +114,53 @@ export function useBookings() {
       toast.success(release ? `${structure.name} liberada para uso.` : `${structure.name} bloqueada.`);
     } catch {
       toast.error("Erro ao atualizar liberação.");
+    }
+  };
+
+  // Grava o novo mapa de unidades da estrutura no estado local (a página não assina
+  // realtime de `structures`), mantendo a agenda coerente sem um refetch inteiro.
+  const applyUnitStatus = (structureId: string, next: Record<string, StructureUnitState>) =>
+    setStructures(prev => prev.map(s => s.id === structureId ? { ...s, unitStatus: next } : s));
+
+  const openUnitMaintenance = (structure: Structure, unitId: string, unitName: string) => {
+    setUnitTarget({ structure, unitId, unitName });
+    setUnitNote("");
+  };
+
+  const confirmUnitMaintenance = async () => {
+    if (!currentProperty || !userData || !unitTarget) return;
+    if (!unitNote.trim()) { toast.error("Descreva o motivo (aparece para a equipe e para o hóspede)."); return; }
+    setSavingUnit(true);
+    try {
+      const next = await StructureService.setUnitStatus(
+        currentProperty.id, unitTarget.structure.id, unitTarget.unitId,
+        { status: "maintenance", note: unitNote.trim(), since: new Date().toISOString(), byName: userData.fullName },
+        userData.id, userData.fullName,
+        { structureName: unitTarget.structure.name, unitName: unitTarget.unitName },
+      );
+      applyUnitStatus(unitTarget.structure.id, next);
+      toast.success(`${unitTarget.unitName} fora de operação.`);
+      setUnitTarget(null);
+      setUnitNote("");
+    } catch {
+      toast.error("Erro ao tirar a unidade de operação.");
+    } finally {
+      setSavingUnit(false);
+    }
+  };
+
+  const restoreUnit = async (structure: Structure, unitId: string, unitName: string) => {
+    if (!currentProperty || !userData) return;
+    try {
+      const next = await StructureService.setUnitStatus(
+        currentProperty.id, structure.id, unitId, null,
+        userData.id, userData.fullName,
+        { structureName: structure.name, unitName },
+      );
+      applyUnitStatus(structure.id, next);
+      toast.success(`${unitName} de volta à operação.`);
+    } catch {
+      toast.error("Erro ao devolver a unidade à operação.");
     }
   };
 
@@ -185,5 +238,6 @@ export function useBookings() {
     freeTimeStart, setFreeTimeStart, freeTimeEnd, setFreeTimeEnd, creating, openCreate, handleCreateBooking,
     cancelTarget, setCancelTarget, cancelReason, setCancelReason, cancelling, openCancel, confirmCancel,
     slotTarget, setSlotTarget, busyBookingId, handleStatusChange, handleToggleRelease,
+    unitTarget, setUnitTarget, unitNote, setUnitNote, savingUnit, openUnitMaintenance, confirmUnitMaintenance, restoreUnit,
   };
 }
