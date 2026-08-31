@@ -26,6 +26,7 @@ import { parseMultiLang } from "@/lib/multilang";
 import {
   MultiLangObj, RateQuoteCategory, RateQuoteRoom, Wedding, WeddingSiteConfig,
 } from "@/types/aura";
+import { todayPropertyIso } from "@/lib/dates";
 
 /** Status de rate_quotes que seguram cabana no simulador (hold pendente). */
 const HOLD_STATUSES = ["open", "sent", "negotiating", "won"];
@@ -476,7 +477,7 @@ export const WeddingSiteService = {
 
     // Fila de hoje do CRM — é o que faz a recepção agir (padrão do aceite da
     // proposta pública; sem push, por desenho).
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const today = todayPropertyIso();
     await CrmService.createAlarm(wedding.propertyId, {
       entityType: "quote", entityId: id, entityLabel: clientName,
       kind: "follow_up",

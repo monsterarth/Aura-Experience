@@ -24,6 +24,7 @@ import { requirePropertyAccess, isAuthError } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { PropertySecretsService } from "@/services/property-secrets-service";
 import { CoolifyService } from "@/services/coolify-service";
+import { resolveEvolutionConfig } from "@/lib/evolution";
 
 const ROLES = ["super_admin", "admin", "manager"] as const;
 
@@ -54,18 +55,11 @@ function db() {
   return supabaseAdmin;
 }
 
+/** Delega para @/lib/evolution; só renomeia `instanceName` -> `instance`, que é como o resto deste arquivo chama. */
 async function resolveConfig(propertyId: string) {
-  const { data: prop } = await db()
-    .from("properties").select("settings").eq("id", propertyId).maybeSingle();
-  // `any` porque `instances` é uma lista de objetos, não string — o resto do arquivo lê texto.
-  const wc = (((prop?.settings ?? {}) as any).whatsappConfig ?? {}) as Record<string, any>;
-  const secrets = await PropertySecretsService.get(propertyId);
-
-  return {
-    baseUrl: (wc.apiUrl || process.env.EVOLUTION_API_URL || "").replace(/\/+$/, ""),
-    instance: wc.instanceName || wc.instances?.[0]?.instanceName || process.env.EVOLUTION_INSTANCE || "",
-    apiKey: secrets.evolutionApiKey || process.env.EVOLUTION_API_KEY || "",
-  };
+  const res = await resolveEvolutionConfig(propertyId);
+  if (!res.ok) return { baseUrl: "", instance: "", apiKey: "" };
+  return { baseUrl: res.config.baseUrl, instance: res.config.instanceName, apiKey: res.config.apiKey };
 }
 
 /** Espaço no nome da instância precisa virar %20 — há instâncias com nome composto. */

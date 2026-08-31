@@ -9,6 +9,8 @@ import { GuestApi } from "@/lib/guest-api";
 import { submitConciergeRequest } from "@/app/actions/concierge-actions";
 import { toggleGuestDND } from "@/app/actions/dnd-actions";
 import type { ConciergeItem, ConciergeRequest, ConciergeGroup } from "@/types/aura";
+import { pickColumn, type ColumnLang } from "@/lib/multilang";
+import { formatBRL } from "@/lib/money";
 
 /* ============================================================
    Portal do Hóspede — TELA PEDIDOS (Fase 2)
@@ -86,16 +88,12 @@ const ORD = {
 };
 
 function itemName(item: ConciergeItem, lang: Lang): string {
-    if (lang === "en" && item.name_en) return item.name_en;
-    if (lang === "es" && item.name_es) return item.name_es;
-    return item.name;
+    return pickColumn(item, "name", lang as ColumnLang);
 }
 function itemDesc(item: ConciergeItem, lang: Lang): string | undefined {
-    if (lang === "en" && item.description_en) return item.description_en;
-    if (lang === "es" && item.description_es) return item.description_es;
-    return item.description;
+    return pickColumn(item, "description", lang as ColumnLang) || undefined;
 }
-const money = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`;
+const money = (v: number) => formatBRL(v);
 
 // O emoji do item é codificado no image_url como "emoji:🧴" (mesmo esquema do admin).
 const EMOJI_PREFIX = "emoji:";

@@ -8,6 +8,7 @@ import { T, tone as toneOf } from "@/lib/admin-tokens";
 import { DataList, Pill, type Column, type RowAction } from "@/components/aura";
 import { accountChips, isAccountOpen, openChips } from "@/lib/stay-account";
 import { activeStatusInfo, futureStatusInfo, fmtDay, isDocPending, titleCase, type StayRow } from "./stay-utils";
+import { formatBRL } from "@/lib/money";
 
 export interface StayListViewProps {
   rows: StayRow[];
@@ -102,7 +103,7 @@ export function StayListView({ rows, mode, onOpen, onWhatsapp, onCheckIn, onChec
         cell: s => {
           const total = pendingTotal(s);
           return total > 0
-            ? <Pill tone="orange" icon={DollarSign} label={`R$ ${total.toFixed(2)}`} />
+            ? <Pill tone="orange" icon={DollarSign} label={formatBRL(total)} />
             : <span style={microLabel}>Sem saldo</span>;
         },
       },

@@ -16,28 +16,9 @@ import { DEFAULT_PET_WEIGHT, EMPTY_PET, PET_HARD_CAP, maxPetsOf, readPets, write
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { toast, Toaster } from "sonner";
 import { cn } from "@/lib/utils";
+import { COUNTRIES } from "@/lib/countries";
 
-const countries = [
-  { name: "Brasil", iso: "BR", flag: "🇧🇷", ddi: "+55" },
-  { name: "Estados Unidos", iso: "US", flag: "🇺🇸", ddi: "+1" },
-  { name: "Argentina", iso: "AR", flag: "🇦🇷", ddi: "+54" },
-  { name: "Portugal", iso: "PT", flag: "🇵🇹", ddi: "+351" },
-  { name: "Uruguai", iso: "UY", flag: "🇺🇾", ddi: "+598" },
-  { name: "Chile", iso: "CL", flag: "🇨🇱", ddi: "+56" },
-  { name: "Paraguai", iso: "PY", flag: "🇵🇾", ddi: "+595" },
-  { name: "Itália", iso: "IT", flag: "🇮🇹", ddi: "+39" },
-  { name: "Alemanha", iso: "DE", flag: "🇩🇪", ddi: "+49" },
-  { name: "França", iso: "FR", flag: "🇫🇷", ddi: "+33" },
-  { name: "Espanha", iso: "ES", flag: "🇪🇸", ddi: "+34" },
-  { name: "Reino Unido", iso: "GB", flag: "🇬🇧", ddi: "+44" },
-  { name: "México", iso: "MX", flag: "🇲🇽", ddi: "+52" },
-  { name: "Colômbia", iso: "CO", flag: "🇨🇴", ddi: "+57" },
-  { name: "Peru", iso: "PE", flag: "🇵🇪", ddi: "+51" },
-  { name: "Bolívia", iso: "BO", flag: "🇧🇴", ddi: "+591" },
-  { name: "Venezuela", iso: "VE", flag: "🇻🇪", ddi: "+58" },
-  { name: "Equador", iso: "EC", flag: "🇪🇨", ddi: "+593" },
-  { name: "Outro", iso: "XX", flag: "🌍", ddi: "" },
-];
+const countries = COUNTRIES;
 
 // Dicionário de Traduções Estáticas
 const translations = {

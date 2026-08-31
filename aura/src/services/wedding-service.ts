@@ -6,17 +6,10 @@ import {
   Wedding, WeddingVendor, WeddingCabinAssignment, WeddingInstallment,
   WeddingStatus, WeddingLeadSettings, DEFAULT_WEDDING_LEAD,
 } from "@/types/aura";
+import { todayPropertyIso, addDays } from "@/lib/dates";
 
 /** Data local da pousada — o servidor roda em UTC e viraria o dia às 21h. */
-function localToday(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-}
 
-function addDays(iso: string, days: number): string {
-  const d = new Date(`${iso}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 export const WeddingService = {
 
@@ -41,7 +34,7 @@ export const WeddingService = {
    */
   async completePastWeddings(propertyId?: string): Promise<{ updated: number; couples: string[] }> {
     // Data local da pousada: às 21h em BRT o UTC já virou e anteciparia um dia.
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const today = todayPropertyIso();
 
     let query = supabaseAdmin
       .from("weddings")
@@ -81,7 +74,7 @@ export const WeddingService = {
    * inventar um casamento que não aconteceu.
    */
   async archiveLapsedNegotiations(propertyId?: string): Promise<{ updated: number; couples: string[] }> {
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const today = todayPropertyIso();
 
     let query = supabaseAdmin
       .from("weddings")
@@ -144,7 +137,7 @@ export const WeddingService = {
    */
   async initialLeadDates(propertyId: string, weddingDate?: string): Promise<{ followUpAt: string; expiresAt: string }> {
     const s = await this.getLeadSettings(propertyId);
-    const today = localToday();
+    const today = todayPropertyIso();
     let expiresAt = addDays(today, s.expiryDays);
     if (weddingDate && weddingDate < expiresAt) expiresAt = weddingDate;
     let followUpAt = addDays(today, s.followUpDays);
@@ -165,7 +158,7 @@ export const WeddingService = {
     const { data } = await supabaseAdmin
       .from("weddings").select("weddingDate").eq("id", id).single();
 
-    const today = localToday();
+    const today = todayPropertyIso();
     let expiresAt = addDays(today, s.renewDays);
     if (data?.weddingDate && data.weddingDate < expiresAt) expiresAt = data.weddingDate;
     let followUpAt = addDays(today, s.followUpDays);
@@ -193,7 +186,7 @@ export const WeddingService = {
    * evento). É o que evita segurar por dois anos um lead de casamento em 2028.
    */
   async archiveExpiredLeads(propertyId?: string): Promise<{ updated: number; couples: string[] }> {
-    const today = localToday();
+    const today = todayPropertyIso();
 
     let query = supabaseAdmin
       .from("weddings")
@@ -499,7 +492,7 @@ export const WeddingService = {
   async listOverdueInstallments(
     propertyId: string
   ): Promise<Array<WeddingInstallment & { couple: string }>> {
-    const today = localToday();
+    const today = todayPropertyIso();
     const { data, error } = await supabaseAdmin
       .from("wedding_installments")
       .select("*, wedding:weddings!inner(propertyId, bride, groom, status)")

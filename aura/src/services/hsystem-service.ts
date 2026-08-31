@@ -30,6 +30,7 @@ import { AuditService } from "./audit-service";
 import type { HsystemConfig, HsystemReservationAction } from "@/types/aura";
 import { DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
 import { createHash, randomUUID } from "crypto";
+import { todayPropertyIso, addDays } from "@/lib/dates";
 
 const DEFAULT_CONFIG: HsystemConfig = {
   mode: "shadow",
@@ -72,16 +73,6 @@ function db() {
 
 // ─── Helpers de data/valor ───────────────────────────────────────────────────
 
-/** Data-de-hoje no fuso da pousada (BRT, UTC-3 — Brasil sem horário de verão). */
-function todayBrt(): string {
-  return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
-}
-
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(`${dateStr}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
 
 function nightsBetween(ci: string, co: string): number {
   const a = new Date(`${ci}T12:00:00Z`).getTime();
@@ -692,7 +683,7 @@ export const HsystemService = {
    * valor igual (o formato do updateRQ). availability=0 fecha a venda.
    */
   async computeAvailability(ctx: HsystemContext): Promise<{ updates: HunitAvailabilityUpdate[]; hash: string; from: string; to: string }> {
-    const from = todayBrt();
+    const from = todayPropertyIso();
     const horizon = ctx.config.horizonDays;
     const to = addDays(from, horizon - 1);
     const entries = Object.entries(ctx.config.categoryMap); // [roomTypeId, categoryId]

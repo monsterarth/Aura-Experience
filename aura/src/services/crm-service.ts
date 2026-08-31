@@ -22,6 +22,7 @@ import {
 } from "@/types/aura";
 import { resolveQuoteValue } from "@/lib/rate-engine";
 import { GuestService } from "./guest-service";
+import { todayPropertyIso, addDays } from "@/lib/dates";
 
 /** Estadia do titular como o painel do cliente mostra (leve, sem a ficha toda). */
 export type ClientStayRow = {
@@ -86,15 +87,7 @@ function weddingToLead(w: Wedding): CrmLead {
   };
 }
 
-function localToday(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-}
 
-function addDays(iso: string, days: number): string {
-  const d = new Date(`${iso}T12:00:00`);
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 /** Slug de canal: minúsculo, sem acento, só [a-z0-9-]. */
 function slugify(s: string): string {
@@ -269,7 +262,7 @@ export const CrmService = {
       .from("rate_quotes").select("checkIn").eq("id", id).eq("propertyId", propertyId).maybeSingle();
     if (!data) throw new Error("Orçamento não encontrado.");
 
-    const today = localToday();
+    const today = todayPropertyIso();
     let expiresAt = addDays(today, s.renewDays);
     if (data.checkIn && data.checkIn < expiresAt) expiresAt = data.checkIn;
     let followUpAt = addDays(today, s.followUpDays);
@@ -639,7 +632,7 @@ export const CrmService = {
     checkIn?: string | null
   ): Promise<{ followUpAt: string; expiresAt: string }> {
     const s = await this.getQuoteLeadSettings(propertyId);
-    const today = localToday();
+    const today = todayPropertyIso();
     let expiresAt = addDays(today, s.expiryDays);
     if (checkIn && checkIn < expiresAt) expiresAt = checkIn;
     let followUpAt = addDays(today, s.followUpDays);

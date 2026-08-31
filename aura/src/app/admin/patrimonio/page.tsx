@@ -15,8 +15,9 @@ import { cn } from "@/lib/utils";
 import { Plus, Landmark, ShieldCheck, Search, ChevronRight, Filter, X } from "lucide-react";
 import AssetFormModal, { ASSET_STATUS, EMPTY_ASSET } from "@/components/admin/AssetFormModal";
 import PatrimonioTabs from "./PatrimonioTabs";
+import { formatBRL } from "@/lib/money";
 
-const money = (n?: number | null) => `R$ ${Number(n ?? 0).toFixed(2)}`;
+const money = (n?: number | null) => formatBRL(n);
 
 type WarrantyFilter = "" | "active" | "expiring" | "expired" | "none";
 

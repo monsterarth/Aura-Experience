@@ -8,6 +8,7 @@ import { FolioItem, LodgingNight, Stay } from "@/types/aura";
 import { formatDateBR, nightsOf, splitNightly } from "@/lib/rate-engine";
 import { assertFolioOpen } from "@/lib/folio-guard";
 import { AuditService } from "./audit-service";
+import { todayPropertyIso } from "@/lib/dates";
 
 type LodgingStayRow = Pick<
   Stay,
@@ -19,8 +20,8 @@ const LODGING_COLS =
 
 export const FinanceService = {
   /** Hoje no fuso da pousada — o servidor roda em UTC. */
-  localToday(): string {
-    return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  todayPropertyIso(): string {
+    return todayPropertyIso();
   },
 
   /** Débitos, créditos e saldo de uma lista de itens do fólio. */
@@ -76,7 +77,7 @@ export const FinanceService = {
     const checkOut = (stay.checkOut || "").slice(0, 10);
     if (!checkIn || !checkOut || checkIn >= checkOut) return 0;
 
-    const today = this.localToday();
+    const today = this.todayPropertyIso();
     const allNights = nightsOf(checkIn, checkOut);
     const due = allNights.filter((n) => n < today);
     if (due.length === 0) return 0;
@@ -123,7 +124,7 @@ export const FinanceService = {
 
   /** Varredura do cron: todas as estadias com diária ativa (não pausadas). */
   async postDueLodgingAll(): Promise<{ staysTouched: number; nightsPosted: number }> {
-    const today = this.localToday();
+    const today = this.todayPropertyIso();
     const { data } = await db()
       .from("stays")
       .select(LODGING_COLS)
@@ -198,7 +199,7 @@ export const FinanceService = {
     const nightly = Number(stay.nightlyRate) || 0;
     const base = splitNightly(Number(stay.lodgingTotal) || nightly * allNights.length, allNights.length);
     const overrides = stay.nightlyOverrides || {};
-    const today = this.localToday();
+    const today = this.todayPropertyIso();
 
     const { data: items } = await db()
       .from("folio_items").select("id, refDate")

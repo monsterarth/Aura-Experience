@@ -1,6 +1,7 @@
 // Tipos e regras puras do Concierge (pedidos, urgência, catálogo).
 import type { Tone } from "@/lib/admin-tokens";
 import type { ConciergeRequest, ConciergeCategory, ConciergeStockComponent } from "@/types/aura";
+import { formatBRL } from "@/lib/money";
 
 export type Tab = "pending" | "history" | "catalog";
 export const TABS: readonly Tab[] = ["pending", "history", "catalog"] as const;
@@ -105,4 +106,4 @@ export function fullDayLabel(offset: number): string {
   d.setDate(d.getDate() + offset);
   return d.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
 }
-export const fmtBRL = (v: number) => `R$ ${v.toFixed(2)}`;
+export const fmtBRL = (v: number) => formatBRL(v);

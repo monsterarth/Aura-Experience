@@ -1,6 +1,7 @@
 // Tokens e helpers do app da guarita — mesma identidade dos outros apps de campo
 // (fundo mais escuro que o admin, gradiente roxo→teal da marca).
 import type { VehicleKind } from "@/types/aura";
+import { formatBRL } from "@/lib/money";
 
 export const T = {
   bg: "#06080f",
@@ -51,7 +52,7 @@ export const PAYMENTS = [
 
 export const CARD_BRANDS = ["Visa", "Mastercard", "Elo", "Amex", "Hipercard", "Diners", "Outra"];
 
-export const money = (v: number) => `R$ ${(Number(v) || 0).toFixed(2).replace(".", ",")}`;
+export const money = (v: number) => formatBRL(v);
 
 export const shortMoney = (v: number) => {
   const n = Number(v) || 0;

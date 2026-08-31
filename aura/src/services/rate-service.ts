@@ -31,6 +31,7 @@ import { readPets, writePets } from "@/lib/pets";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
 import { GuestService } from "./guest-service";
+import { todayPropertyIso } from "@/lib/dates";
 
 const QUOTE_STATUSES: RateQuoteStatus[] = ["open", "sent", "negotiating", "won", "lost"];
 
@@ -2052,7 +2053,7 @@ export const RateService = {
    */
   async archiveExpiredQuotes(): Promise<{ expired: number; lapsed: number; names: string[] }> {
     const admin = supabaseAdmin!;
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const today = todayPropertyIso();
     const now = new Date().toISOString();
 
     const archive = async (

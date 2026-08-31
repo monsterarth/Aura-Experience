@@ -15,8 +15,9 @@ import {
 import { T, alpha } from "@/lib/admin-tokens";
 import { Button, Field, IconButton, Input, Pill, Select, Spinner, useConfirm } from "@/components/aura";
 import type { StayAccountState, StayRequest } from "./useStayAccount";
+import { formatBRL } from "@/lib/money";
 
-export const money = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`;
+export const money = (v: number) => formatBRL(v);
 
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>{children}</div>;

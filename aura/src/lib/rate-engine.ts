@@ -19,44 +19,16 @@ import {
   RateSettings,
   RateTable,
 } from '@/types/aura';
+import { isoToDate, addDays, nightsOf, isWeekendNight, nightsBetween, dateToIso, formatDateBR } from './dates';
 
 export const MAX_PAX = 6;
 
-// ── Datas (YYYY-MM-DD, sem fuso) ─────────────────────────────────────────────
-
-export function isoToDate(iso: string): Date {
-  return new Date(`${iso}T12:00:00`);
-}
-
-export function dateToIso(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-export function addDays(iso: string, days: number): string {
-  const d = isoToDate(iso);
-  d.setDate(d.getDate() + days);
-  return dateToIso(d);
-}
-
-export function nightsBetween(checkIn: string, checkOut: string): number {
-  return Math.round((isoToDate(checkOut).getTime() - isoToDate(checkIn).getTime()) / 86400000);
-}
-
-/** Todas as noites do intervalo: [checkIn, checkOut). */
-export function nightsOf(checkIn: string, checkOut: string): string[] {
-  const out: string[] = [];
-  for (let d = checkIn; d < checkOut; d = addDays(d, 1)) out.push(d);
-  return out;
-}
-
-/** SEX/SÁB contam como fim de semana (a noite de sáb→dom vira diária de sábado). */
-export function isWeekendNight(iso: string): boolean {
-  const wd = isoToDate(iso).getDay();
-  return wd === 5 || wd === 6;
-}
+// ── Datas ────────────────────────────────────────────────────────────────────
+// Moradia real: @/lib/dates. Re-exportadas aqui porque este módulo era o dono
+// original e vários arquivos ainda importam daqui.
+export {
+  isoToDate, dateToIso, addDays, nightsBetween, nightsOf, isWeekendNight, formatDateBR,
+} from './dates';
 
 export function formatBRL(v: number): string {
   return v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
@@ -74,9 +46,6 @@ export function splitNightly(total: number, nights: number): number[] {
   return values;
 }
 
-export function formatDateBR(iso: string): string {
-  return iso.split('-').reverse().join('/');
-}
 
 // ── Cascata de cálculo ───────────────────────────────────────────────────────
 

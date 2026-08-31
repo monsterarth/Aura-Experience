@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { PageShell, PageHeader, SkeletonList } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import { AlertOctagon, CalendarClock } from "lucide-react";
+import { formatBRL } from "@/lib/money";
 
 const LOSS_META: Record<string, { label: string; color: string }> = {
   expiry: { label: "Vencimento", color: "#ef4444" },
@@ -53,7 +54,7 @@ export default function PerdasPage() {
   const maxCost = useMemo(() => Math.max(1, ...Array.from(summary.values()).map((v) => v.cost)), [summary]);
 
   const todayStr = new Date().toISOString().slice(0, 10);
-  const money = (n: number) => `R$ ${n.toFixed(2)}`;
+  const money = (n: number) => formatBRL(n);
   const fmtDate = (s: string) => new Date(s).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
 
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;

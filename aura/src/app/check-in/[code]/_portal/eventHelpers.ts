@@ -1,6 +1,7 @@
 import type { Event } from "@/types/aura";
 import { eventOverlaps, eventSpansDay, localIso, todayIso } from "@/lib/event-dates";
 import type { Lang } from "./context";
+import { formatBRL } from "@/lib/money";
 
 /* Helpers de evento compartilhados (ExploreScreen + EventSheet).
    Portados da página de eventos existente. */
@@ -53,5 +54,5 @@ export function eventDesc(event: Event, lang: Lang): string | undefined {
 export function eventPrice(event: Event, lang: Lang): string {
     if (event.priceDescription) return event.priceDescription;
     if (!event.price || event.price === 0) return FREE[lang] || FREE.pt;
-    return `R$ ${event.price.toFixed(2).replace(".", ",")}`;
+    return formatBRL(event.price);
 }

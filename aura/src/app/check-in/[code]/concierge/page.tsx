@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { pickColumn, type ColumnLang } from "@/lib/multilang";
 
 // --- Theme Helper ---
 function hexToHSL(hex: string): string {
@@ -149,10 +150,8 @@ const EMOJI_PREFIX = "emoji:";
 const isEmojiUrl = (u?: string) => !!u && u.startsWith(EMOJI_PREFIX);
 const emojiFromUrl = (u?: string) => (u ? u.slice(EMOJI_PREFIX.length) : "");
 
-function getItemName(item: ConciergeItem, lang: 'pt' | 'en' | 'es'): string {
-  if (lang === 'en' && item.name_en) return item.name_en;
-  if (lang === 'es' && item.name_es) return item.name_es;
-  return item.name;
+function getItemName(item: ConciergeItem, lang: ColumnLang): string {
+  return pickColumn(item, "name", lang);
 }
 
 function getItemDesc(item: ConciergeItem, lang: 'pt' | 'en' | 'es'): string | undefined {

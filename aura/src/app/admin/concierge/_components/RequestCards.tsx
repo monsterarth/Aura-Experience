@@ -7,6 +7,7 @@ import type { ConciergeItem } from "@/types/aura";
 import { T, tone as toneOf } from "@/lib/admin-tokens";
 import { Card, Pill, Button, IconButton, Dialog, SectionLabel } from "@/components/aura";
 import { ageLabel, avatarFromName, categoryLabel, categoryTone, resolveItemIcon, URGENCY, type EnrichedRequest, type RequestAction } from "./concierge-utils";
+import { formatBRL } from "@/lib/money";
 
 /** Ícone do item: emoji, imagem ou ícone por categoria. */
 export function ItemIcon({ item, size = 32 }: { item: { image_url?: string; category: string; name?: string }; size?: number }) {
@@ -113,7 +114,7 @@ export function DetailPanel({ req, open, onClose, onAction }: {
               { label: "Cabana", value: req.cabinName || "—" },
               { label: "Tempo de espera", value: ageLabel(req.ageMin) },
               { label: "Solicitante", value: req.requestedBy === "maid" ? "Camareira" : "Hóspede" },
-              { label: "Valor estimado", value: req.item && req.item.price > 0 ? `R$ ${(req.item.price * req.quantity).toFixed(2)}` : "Grátis" },
+              { label: "Valor estimado", value: req.item && req.item.price > 0 ? formatBRL(req.item.price * req.quantity) : "Grátis" },
             ].map(info => (
               <div key={info.label} style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 12px" }}>
                 <SectionLabel style={{ marginBottom: 4 }}>{info.label}</SectionLabel>
@@ -156,7 +157,7 @@ export function CatalogCard({ item, onEdit, onToggleActive, onDelete, onRequest 
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: item.active ? T.text : T.muted, lineHeight: 1.3 }}>{item.name}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: item.price > 0 ? T.brandText : T.green }}>{item.price > 0 ? `R$ ${item.price.toFixed(2)}` : "Grátis"}</span>
+          <span style={{ fontSize: 12, fontWeight: 800, color: item.price > 0 ? T.brandText : T.green }}>{item.price > 0 ? formatBRL(item.price) : "Grátis"}</span>
           {item.included_qty > 0 && <span style={{ fontSize: 10, color: T.muted }}>· {item.included_qty} incluso(s)</span>}
           {item.stockAvailable === false && <Pill tone="red" label="Esgotado" />}
         </div>

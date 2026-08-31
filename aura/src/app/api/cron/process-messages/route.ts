@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
 import { parseEvolutionError, isSessionDownError } from "@/lib/evolution-error";
 import { PropertySecretsService } from "@/services/property-secrets-service";
-import { isSafeMode, logSuppressedSend } from "@/lib/safe-mode";
+import { resolveEvolutionConfig, sendEvolutionText } from "@/lib/evolution";
 import { whatsappNumberProblem } from "@/lib/phone";
 import { WhatsAppHealthService } from "@/services/whatsapp-health-service";
 
@@ -106,52 +106,11 @@ export async function GET(request: Request) {
           continue;
         }
 
-        const { data: propertyDoc } = await supabaseAdmin
-          .from("properties")
-          .select("settings")
-          .eq("id", msg.propertyId)
-          .single();
-
-        if (!propertyDoc) throw new Error("Propriedade não encontrada");
-
-        const propertySettings = propertyDoc.settings as any;
-        if (!propertySettings?.whatsappEnabled) {
-          throw new Error("WhatsApp desligado na propriedade.");
-        }
-
-        const cfg = propertySettings.whatsappConfig ?? {};
-        // A chave vem de property_secrets (fora do alcance do navegador). O service
-        // cacheia por 60s — este laço resolve segredo mensagem a mensagem.
-        const secrets = await PropertySecretsService.get(msg.propertyId);
-        const apiUrl: string = cfg.apiUrl || process.env.EVOLUTION_API_URL || "";
-        const apiKey: string = secrets.evolutionApiKey || process.env.EVOLUTION_API_KEY || "";
-        const instanceName: string =
-          cfg.instanceName ||
-          cfg.instances?.[0]?.instanceName ||
-          process.env.EVOLUTION_INSTANCE ||
-          "";
-
-        if (!apiUrl || !apiKey || !instanceName) throw new Error("Configuração da Evolution API ausente.");
-
-        const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl;
-
-        // Fila de automações rodando contra o espelho: a fila anda (status vira "sent"),
-        // mas nenhuma mensagem sai. Sem isso, um `pnpm dev` esquecido aberto dispararia
-        // boas-vindas e lembretes reais para os hóspedes de verdade.
-        if (isSafeMode()) {
-          logSuppressedSend("whatsapp", msg.to ?? "(sem destinatário)", (msg.body || "").slice(0, 60));
-          await supabaseAdmin
-            .from("messages")
-            .update({
-              status: "sent",
-              attempts: (msg.attempts || 0) + 1,
-              lastAttemptAt: new Date().toISOString(),
-              errorMessage: null,
-            })
-            .eq("id", msg.id);
-          successCount++;
-          continue;
-        }
+        // requireEnabled: só o cron respeita o desligamento do WhatsApp na propriedade
+        // (o envio manual segue permitido de propósito — ver @/lib/evolution).
+        // O modo seguro é tratado dentro de sendEvolutionText.
+        const cfg = await resolveEvolutionConfig(msg.propertyId, { requireEnabled: true });
+        if (!cfg.ok) throw new Error(cfg.message);
 
         // Número que a Evolution vai recusar de qualquer jeito. Falha JÁ, com a
         // causa por extenso: cadastro sem DDI não se conserta em três tentativas,
@@ -173,58 +132,33 @@ export async function GET(request: Request) {
           continue;
         }
 
-        const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            apikey: apiKey,
-          },
-          body: JSON.stringify({
-            number: msg.to,
-            text: msg.body,
-          }),
-        });
+        // whatsappNumberProblem() acima já barrou número ausente/inválido.
+        const to = msg.to as string;
+        const sent = await sendEvolutionText(cfg.config, to, msg.body, `process-messages msg ${msg.id}`);
+        if (!sent.ok) throw new Error(sent.errorMessage);
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          const errorMessage = parseEvolutionError(response.status, errorText);
-          console.error(`[process-messages] Evolution API error (msg ${msg.id}):`, response.status, errorText);
-          throw new Error(errorMessage);
-        }
-
-        const responseData = await response.json();
-        // Evolution API returns: { key: { id: "..." }, status: "PENDING" }
-        const apiMessageId: string | null = responseData?.key?.id || null;
-        const isoNow = new Date().toISOString();
-
-        if (apiMessageId && apiMessageId !== msg.id) {
-          // Registar com o ID externo da Evolution como messageIdApi
-          await supabaseAdmin
-            .from("messages")
-            .update({
-              status: "sent",
-              messageIdApi: apiMessageId,
-              attempts: (msg.attempts || 0) + 1,
-              lastAttemptAt: isoNow,
-              errorMessage: null,
-            })
-            .eq("id", msg.id);
-        } else {
-          await supabaseAdmin
-            .from("messages")
-            .update({
-              status: "sent",
-              attempts: (msg.attempts || 0) + 1,
-              lastAttemptAt: isoNow,
-              errorMessage: null,
-            })
-            .eq("id", msg.id);
-        }
+        await supabaseAdmin
+          .from("messages")
+          .update({
+            status: "sent",
+            // Só grava o id externo quando a Evolution devolveu um diferente do nosso.
+            ...(sent.apiMessageId && sent.apiMessageId !== msg.id
+              ? { messageIdApi: sent.apiMessageId }
+              : {}),
+            attempts: (msg.attempts || 0) + 1,
+            lastAttemptAt: new Date().toISOString(),
+            errorMessage: null,
+          })
+          .eq("id", msg.id);
 
         successCount++;
 
-        const humanDelay = Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000;
-        await sleep(humanDelay);
+        // A pausa existe para não parecer robô na Evolution. No modo seguro nada saiu,
+        // então esperar só faria a fila do DEV arrastar (era `continue` antes).
+        if (!sent.safeMode) {
+          const humanDelay = Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000;
+          await sleep(humanDelay);
+        }
 
       } catch (error: any) {
         console.error(`Erro ao enviar mensagem ${msg.id}:`, error.message);

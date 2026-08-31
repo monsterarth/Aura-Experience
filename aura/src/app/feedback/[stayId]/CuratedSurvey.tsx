@@ -5,6 +5,7 @@ import type { Stay, Property, SurveyTemplate, SurveyChip } from "@/types/aura";
 import { getPortalThemeVars } from "@/app/check-in/[code]/_portal/theme";
 import { Icon, Card, PrimaryBtn, GhostBtn, IconBtn, Chip } from "@/app/check-in/[code]/_portal/ui";
 import { MAX_HIGHLIGHT_LEN } from "@/lib/survey-metrics";
+import { pickColumn, type ColumnLang } from "@/lib/multilang";
 
 /* ============================================================
    Survey 2.0 — fluxo curado do hóspede (faces → categorias →
@@ -149,7 +150,7 @@ export function CuratedSurvey({ stay, property, template, lang }: {
     const [copied, setCopied] = React.useState(false);
 
     const cl = (c: { label: string; label_en?: string; label_es?: string }) =>
-        (lang === "en" && c.label_en) || (lang === "es" && c.label_es) || c.label;
+        pickColumn(c, "label", lang as ColumnLang);
     const loc = (obj: Record<string, unknown> | undefined, base: string): string | undefined => {
         if (!obj) return undefined;
         const v = (lang !== "pt" && obj[`${base}_${lang}`]) || obj[base];

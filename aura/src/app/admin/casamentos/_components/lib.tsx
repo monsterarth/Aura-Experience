@@ -9,7 +9,11 @@ import { Field, FieldRow, Input, Select, Switch } from "@/components/aura";
 // Promovidos a módulo compartilhado (identidade oficial do admin) — o objeto
 // continua exportado daqui para não quebrar os imports do módulo.
 import { T, alpha, tone } from "@/lib/admin-tokens";
+import { todayPropertyIso } from "@/lib/dates";
 export { T, alpha, tone };
+
+/** Hoje no fuso da pousada. Nome mantido: duas telas do módulo já importam daqui. */
+export const todayIso = todayPropertyIso;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -27,9 +31,6 @@ export function fmt(dateStr: string): string {
 }
 
 /** Hoje no fuso da pousada — comparar prazo com data em UTC erra à noite. */
-export function todayIso(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
-}
 
 export function daysUntil(dateStr: string): number {
   const now = new Date(); now.setHours(0, 0, 0, 0);

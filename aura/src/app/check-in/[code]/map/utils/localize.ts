@@ -1,19 +1,16 @@
 import { MapLang } from "../types";
+import { pickColumn, type ColumnLang } from "@/lib/multilang";
 
-// Resolve campos traduzidos inline (name/name_en/name_es) por idioma,
-// caindo no valor padrão (PT) quando a tradução não existe.
+// Wrappers finos sobre @/lib/multilang — a regra (tradução vazia cai no PT) mora lá.
+// Mantidos porque seis telas do mapa já importam estes nomes.
 
 type Named = { name: string; name_en?: string; name_es?: string };
 type Described = { description?: string; description_en?: string; description_es?: string };
 
 export function localizedName(a: Named, lang: MapLang): string {
-    if (lang === "en" && a.name_en) return a.name_en;
-    if (lang === "es" && a.name_es) return a.name_es;
-    return a.name;
+    return pickColumn(a, "name", lang as ColumnLang);
 }
 
 export function localizedDescription(a: Described, lang: MapLang): string {
-    if (lang === "en" && a.description_en) return a.description_en;
-    if (lang === "es" && a.description_es) return a.description_es;
-    return a.description ?? "";
+    return pickColumn(a, "description", lang as ColumnLang);
 }

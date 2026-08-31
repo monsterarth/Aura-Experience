@@ -15,6 +15,7 @@ import {
 } from "@/components/aura";
 import type { ParkingRate, ParkingShift, Vehicle, VehicleMovement } from "@/types/aura";
 import { VehicleRegistry } from "./_components/VehicleRegistry";
+import { formatBRL } from "@/lib/money";
 
 interface Report {
   from: string; to: string;
@@ -34,7 +35,7 @@ interface GuaritaAdmin {
 }
 
 const METHOD_LABEL: Record<string, string> = { credit: "Crédito", debit: "Débito", pix: "Pix", cash: "Dinheiro" };
-const money = (v: number) => `R$ ${(Number(v) || 0).toFixed(2).replace(".", ",")}`;
+const money = (v: number) => formatBRL(v);
 const br = (d: string) => (d ? d.split("-").reverse().join("/") : "—");
 
 export default function GuaritaAdminPage() {

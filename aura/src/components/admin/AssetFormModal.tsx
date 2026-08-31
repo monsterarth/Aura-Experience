@@ -21,6 +21,7 @@ import { ImageUpload } from "./ImageUpload";
 import { FileUpload } from "./FileUpload";
 import StockLocationSelect from "./StockLocationSelect";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
+import { formatBRL } from "@/lib/money";
 
 export const ASSET_STATUS: Record<AssetStatus, { label: string; cls: string }> = {
   active: { label: "Ativo", cls: "bg-emerald-500/15 text-emerald-500" },
@@ -80,7 +81,7 @@ export default function AssetFormModal({ propertyId, initial, onClose, onSaved }
     [categories],
   );
 
-  const money = (n?: number | null) => `R$ ${Number(n ?? 0).toFixed(2)}`;
+  const money = (n?: number | null) => formatBRL(n);
 
   const save = async () => {
     if (!form?.name?.trim()) { toast.error("Informe o nome do ativo."); return; }

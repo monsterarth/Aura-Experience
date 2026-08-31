@@ -2,6 +2,7 @@
 import type { CSSProperties } from "react";
 import { CrmLead } from "@/types/aura";
 import { T } from "@/lib/admin-tokens";
+import { todayPropertyIso } from "@/lib/dates";
 
 /** dot agora é COR (hex) — os componentes renderizam com inline style. */
 export interface StageDef { id: string; label: string; dot: string }
@@ -71,7 +72,7 @@ export const WEDDING_STAGES: StageDef[] = [
 export const ACTIVE_STAGES = new Set(["open", "sent", "negotiating", "tentative"]);
 
 export const todayIso = () =>
-  new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  todayPropertyIso();
 
 export const fmtBR = (iso?: string | null) =>
   iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—";

@@ -21,8 +21,9 @@ import AssetFormModal, { ASSET_STATUS } from "@/components/admin/AssetFormModal"
 import AssetDisposalModal from "@/components/admin/AssetDisposalModal";
 import AssetTransferModal from "@/components/admin/AssetTransferModal";
 import AssetQr from "@/components/admin/AssetQr";
+import { formatBRL } from "@/lib/money";
 
-const money = (n?: number | null) => `R$ ${Number(n ?? 0).toFixed(2)}`;
+const money = (n?: number | null) => formatBRL(n);
 const date = (s?: string | null) => (s ? new Date(s).toLocaleDateString("pt-BR") : "—");
 const dateTime = (s?: string | null) => (s ? new Date(s).toLocaleString("pt-BR") : "—");
 

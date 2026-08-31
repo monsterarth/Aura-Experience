@@ -3,9 +3,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
-import { parseEvolutionError } from "@/lib/evolution-error";
-import { PropertySecretsService } from "@/services/property-secrets-service";
-import { isSafeMode, logSuppressedSend } from "@/lib/safe-mode";
+import { resolveEvolutionConfig, sendEvolutionText } from "@/lib/evolution";
 
 export async function POST(req: Request) {
   const auth = await requireAuth();
@@ -25,67 +23,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Sem permissão para esta propriedade." }, { status: 403 });
     }
 
-    const { data: property } = await supabaseAdmin
-      .from("properties")
-      .select("settings")
-      .eq("id", propertyId)
-      .single();
+    const cfg = await resolveEvolutionConfig(propertyId);
+    if (!cfg.ok) {
+      return NextResponse.json({ error: cfg.message }, { status: 500 });
+    }
 
-    const cfg = property?.settings?.whatsappConfig;
-    // A chave vem de property_secrets (fora do alcance do navegador), não mais de settings.
-    const secrets = await PropertySecretsService.get(propertyId);
-    const apiUrl = cfg?.apiUrl || process.env.EVOLUTION_API_URL;
-    const apiKey = secrets.evolutionApiKey || process.env.EVOLUTION_API_KEY;
-    const instanceName = cfg?.instanceName
-      || cfg?.instances?.[0]?.instanceName
-      || process.env.EVOLUTION_INSTANCE;
+    const sent = await sendEvolutionText(cfg.config, number, message, "chat/send");
 
-    // Fora de produção o chat não fala com a Evolution real — a mensagem entra no banco
-    // como enviada (a conversa continua legível no admin) e o conteúdo vai para o log.
-    if (isSafeMode()) {
-      logSuppressedSend("whatsapp", number, String(message).slice(0, 60));
+    if (!sent.ok) {
       await supabaseAdmin
         .from("messages")
-        .update({ status: "sent", messageIdApi: null })
+        .update({ status: "failed", errorMessage: sent.errorMessage })
         .eq("id", messageId);
+      return NextResponse.json({ error: sent.errorMessage }, { status: sent.status ?? 500 });
+    }
+
+    // Modo seguro grava como enviada com id nulo: a conversa continua legível no admin.
+    await supabaseAdmin
+      .from("messages")
+      .update({ status: "sent", messageIdApi: sent.apiMessageId })
+      .eq("id", messageId);
+
+    if (sent.safeMode) {
       return NextResponse.json({ success: true, messageId: null, safeMode: true });
     }
 
-    if (!apiUrl || !apiKey || !instanceName) {
-      return NextResponse.json({ error: "Configuração da Evolution API ausente no servidor." }, { status: 500 });
-    }
-
-    const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl;
-
-    const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: apiKey,
-      },
-      body: JSON.stringify({ number, text: message }),
-    });
-
-    if (!response.ok) {
-      const rawText = await response.text();
-      console.error("[chat/send] Evolution API error:", response.status, rawText);
-      const errorMessage = parseEvolutionError(response.status, rawText);
-      await supabaseAdmin
-        .from("messages")
-        .update({ status: "failed", errorMessage })
-        .eq("id", messageId);
-      return NextResponse.json({ error: errorMessage }, { status: response.status });
-    }
-
-    const data = await response.json();
-    const apiMessageId = data?.key?.id || null;
-
-    await supabaseAdmin
-      .from("messages")
-      .update({ status: "sent", messageIdApi: apiMessageId })
-      .eq("id", messageId);
-
-    return NextResponse.json({ success: true, messageId: apiMessageId });
+    return NextResponse.json({ success: true, messageId: sent.apiMessageId });
 
   } catch (error: any) {
     if (requestBody?.propertyId && requestBody?.messageId) {

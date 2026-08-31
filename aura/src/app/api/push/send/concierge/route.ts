@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
-import { sendPushNotification } from "@/lib/push-server";
+import { fanOutByRole } from "@/lib/push-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -23,31 +22,13 @@ export async function POST(req: Request) {
   const propertyId: string = record?.propertyId;
   if (!propertyId) return NextResponse.json({ ok: true });
 
-  const { data: subs, error } = await supabaseAdmin!
-    .from("push_subscriptions")
-    .select("endpoint, p256dh, auth")
-    .eq("propertyId", propertyId)
-    .in("role", ["houseman", "admin", "manager", "super_admin"]);
-
-  // Falha de consulta virava `data: null`, indistinguível de "ninguém inscrito"
-  // — foi assim que a tabela ficou meses sem existir sem ninguém perceber.
-  if (error) console.error("[push/send/concierge]", error.message);
-  if (!subs?.length) return NextResponse.json({ ok: true });
-
-  await Promise.all(
-    subs.map(async (sub) => {
-      const result = await sendPushNotification(sub, {
-        title: "Novo pedido",
-        body: "Há um novo pedido de concierge aguardando atendimento.",
-        url: "/houseman",
-        tag: `houseman-request-${record.id}`,
-        role: "houseman",
-      });
-      if (result.gone) {
-        await supabaseAdmin!.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
-      }
-    })
-  );
+  await fanOutByRole(propertyId, ["houseman", "admin", "manager", "super_admin"], {
+    title: "Novo pedido",
+    body: "Há um novo pedido de concierge aguardando atendimento.",
+    url: "/houseman",
+    tag: `houseman-request-${record.id}`,
+    role: "houseman",
+  });
 
   return NextResponse.json({ ok: true });
 }

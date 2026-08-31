@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase";
-import { sendPushNotification } from "@/lib/push-server";
+import { fanOut, fanOutByRole } from "@/lib/push-notify";
 
 export const dynamic = "force-dynamic";
 
@@ -25,45 +24,20 @@ export async function POST(req: Request) {
 
   const assignedTo: string[] = record.assignedTo ?? [];
 
-  let subs: { endpoint: string; p256dh: string; auth: string }[] = [];
+  const payload = {
+    title: "Nova tarefa de manutenção",
+    body: "Uma nova tarefa de manutenção foi atribuída.",
+    url: "/maintenance",
+    tag: `maintenance-task-${record.id}`,
+    role: "maintenance",
+  };
 
+  // Com responsável, só ele; sem responsável, a equipe toda da propriedade.
   if (assignedTo.length > 0) {
-    // Notifica apenas os técnicos assignados
-    const { data, error } = await supabaseAdmin!
-      .from("push_subscriptions")
-      .select("endpoint, p256dh, auth")
-      .in("staffId", assignedTo)
-      .eq("propertyId", propertyId);
-    // Falha de consulta virava lista vazia, indistinguível de "ninguém inscrito".
-    if (error) console.error("[push/send/maintenance assignados]", error.message);
-    subs = data ?? [];
+    await fanOut(assignedTo, propertyId, payload);
   } else {
-    // Sem assignação: notifica todos os técnicos/manutenção da propriedade
-    const { data, error } = await supabaseAdmin!
-      .from("push_subscriptions")
-      .select("endpoint, p256dh, auth")
-      .eq("propertyId", propertyId)
-      .in("role", ["maintenance", "technician", "admin", "manager", "super_admin"]);
-    if (error) console.error("[push/send/maintenance por cargo]", error.message);
-    subs = data ?? [];
+    await fanOutByRole(propertyId, ["maintenance", "technician", "admin", "manager", "super_admin"], payload);
   }
-
-  if (!subs.length) return NextResponse.json({ ok: true });
-
-  await Promise.all(
-    subs.map(async (sub) => {
-      const result = await sendPushNotification(sub, {
-        title: "Nova tarefa de manutenção",
-        body: "Uma nova tarefa de manutenção foi atribuída.",
-        url: "/maintenance",
-        tag: `maintenance-task-${record.id}`,
-        role: "maintenance",
-      });
-      if (result.gone) {
-        await supabaseAdmin!.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
-      }
-    })
-  );
 
   return NextResponse.json({ ok: true });
 }

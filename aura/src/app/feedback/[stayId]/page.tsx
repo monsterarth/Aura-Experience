@@ -7,6 +7,7 @@ import { CuratedSurvey } from "./CuratedSurvey";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle2, Star, Send, Loader2, Gift } from "lucide-react";
+import { pickColumn, pickColumnList, type ColumnLang } from '@/lib/multilang';
 
 type Lang = 'pt' | 'en' | 'es';
 
@@ -79,14 +80,9 @@ export default function GuestFeedbackPage() {
   const t = ui[lang];
 
   // Language-aware question field helpers
-  const qText = (q: SurveyQuestion) =>
-    (lang === 'en' && q.text_en) || (lang === 'es' && q.text_es) || q.text;
-  const qDesc = (q: SurveyQuestion) =>
-    (lang === 'en' && q.description_en) || (lang === 'es' && q.description_es) || q.description;
-  const qOptions = (q: SurveyQuestion): string[] =>
-    (lang === 'en' && q.options_en?.length ? q.options_en : null) ||
-    (lang === 'es' && q.options_es?.length ? q.options_es : null) ||
-    q.options || [];
+  const qText = (q: SurveyQuestion) => pickColumn(q, 'text', lang as ColumnLang);
+  const qDesc = (q: SurveyQuestion) => pickColumn(q, 'description', lang as ColumnLang) || undefined;
+  const qOptions = (q: SurveyQuestion): string[] => pickColumnList(q, 'options', lang as ColumnLang);
 
   useEffect(() => {
     async function loadData() {

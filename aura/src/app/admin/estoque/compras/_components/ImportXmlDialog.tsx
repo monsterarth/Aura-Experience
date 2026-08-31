@@ -23,9 +23,10 @@ import {
   UploadCloud, FileCode2, Loader2, AlertTriangle, CheckCircle2, ArrowLeft,
   Package, Sparkles, Ban, Armchair, Link2, Barcode, Lightbulb,
 } from "lucide-react";
+import { formatBRL } from "@/lib/money";
 
 const UNITS: StockUnit[] = ["un", "kg", "g", "L", "ml", "cx", "pct", "par", "rolo"];
-const brl = (n: number) => `R$ ${n.toFixed(2)}`;
+const brl = (n: number) => formatBRL(n);
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 interface LineState {

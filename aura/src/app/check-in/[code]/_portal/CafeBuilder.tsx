@@ -4,6 +4,7 @@ import React from "react";
 import { Icon, Card, Chip, PrimaryBtn, titleCase } from "./ui";
 import { usePortal, type Lang } from "./context";
 import type { FBCategory, FBMenuItem, FBOrder } from "@/types/aura";
+import { pickColumn, type ColumnLang } from "@/lib/multilang";
 
 /* ============================================================
    Café da manhã (ENTREGA) numa página só, dentro do portal.
@@ -27,9 +28,9 @@ export function CafeBuilder() {
     const fb = property?.settings?.fbSettings?.breakfast;
 
     const loc = (o: { name: string; name_en?: string; name_es?: string }) =>
-        (lang === "en" && o.name_en) || (lang === "es" && o.name_es) || o.name;
+        pickColumn(o, "name", lang as ColumnLang);
     const locD = (o: { description?: string; description_en?: string; description_es?: string }) =>
-        (lang === "en" && o.description_en) || (lang === "es" && o.description_es) || o.description;
+        pickColumn(o, "description", lang as ColumnLang) || undefined;
 
     const totalGuests = Math.max(1, (stay.counts?.adults || 0) + (stay.counts?.children || 0));
     const guestNames = React.useMemo(() => {

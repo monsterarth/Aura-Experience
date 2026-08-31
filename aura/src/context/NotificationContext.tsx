@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { useProperty } from "@/context/PropertyContext";
+import { todayPropertyIso } from "@/lib/dates";
 
 interface NotificationCounts {
   messages: number;
@@ -40,7 +41,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     if (!propertyId) return;
 
     // Alarme "devido" = vence hoje ou já venceu (fuso da operação).
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    const today = todayPropertyIso();
 
     const [msgRes, concRes, bookRes, quoteAlarmRes, weddingAlarmRes, overdueInstRes] = await Promise.all([
       supabase

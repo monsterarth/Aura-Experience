@@ -13,6 +13,7 @@ import { Asset, AssetDisposalInput, AssetDisposalType } from "@/types/aura";
 import { StockClient } from "@/lib/stock-client";
 import { FileUpload } from "./FileUpload";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
+import { formatBRL } from "@/lib/money";
 
 const TYPES: { value: AssetDisposalType; label: string; hint: string }[] = [
   { value: "sale", label: "Venda", hint: "Informe o valor recebido." },
@@ -41,7 +42,7 @@ export default function AssetDisposalModal({ propertyId, asset, onClose, onDone 
   const requestClose = useDiscardGuard(form, onClose);
 
   const set = (patch: Partial<AssetDisposalInput>) => setForm((f) => ({ ...f, ...patch }));
-  const money = (n?: number | null) => `R$ ${Number(n ?? 0).toFixed(2)}`;
+  const money = (n?: number | null) => formatBRL(n);
 
   const bookValue = Number(asset.bookValue ?? 0);
   const result = form.disposalValue != null ? Number(form.disposalValue) - bookValue : null;

@@ -13,6 +13,7 @@ import { PageShell, PageHeader, SkeletonList, useConfirm, Dialog, Button } from 
 import { cn } from "@/lib/utils";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
 import { Plus, Pencil, Trash2, Save, Package, AlertTriangle, Search } from "lucide-react";
+import { formatBRL } from "@/lib/money";
 
 const UNITS: StockUnit[] = ["un", "kg", "g", "L", "ml", "cx", "pct", "par", "rolo"];
 
@@ -138,7 +139,7 @@ export default function EstoqueProdutosPage() {
                 </div>
                 <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-border/60">
                   <span className="text-xs text-muted-foreground tabular-nums truncate">
-                    {Number(p.averageCost) > 0 ? `Custo médio R$ ${Number(p.averageCost).toFixed(2)}` : "Sem custo médio"}
+                    {Number(p.averageCost) > 0 ? `Custo médio ${formatBRL(p.averageCost)}` : "Sem custo médio"}
                   </span>
                   <div className="flex gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button onClick={() => setForm(p)} aria-label="Editar"
@@ -192,7 +193,7 @@ export default function EstoqueProdutosPage() {
                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{Number(p.minStock)}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">{p.unit}</td>
                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                      {Number(p.averageCost) > 0 ? `R$ ${Number(p.averageCost).toFixed(2)}` : "—"}
+                      {Number(p.averageCost) > 0 ? formatBRL(p.averageCost) : "—"}
                     </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">

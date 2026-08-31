@@ -33,6 +33,7 @@ import {
   PetDetails, QuoteIntake, QuoteIntakeCompanion, RatePaymentOption,
   RateQuoteCategory, RateQuoteRecord, RateQuoteRoom,
 } from "@/types/aura";
+import { todayPropertyIso } from "@/lib/dates";
 
 /** Status em que a proposta ainda pode ser vista/aceita pelo cliente. */
 const OPEN_STATUSES = ["open", "sent", "negotiating"];
@@ -461,7 +462,7 @@ export const RateQuotePublicService = {
 
     const q = data as RateQuoteRecord;
     if (!OPEN_STATUSES.includes(q.status)) return null;
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const today = todayPropertyIso();
     if (q.expiresAt && q.expiresAt < today) return null;
 
     const rooms = roomsOf(q);
@@ -617,7 +618,7 @@ export const RateQuotePublicService = {
 
     const q = data as RateQuoteRecord;
     if (!OPEN_STATUSES.includes(q.status)) return { ok: false, error: "Esta proposta não está mais disponível." };
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const today = todayPropertyIso();
     if (q.expiresAt && q.expiresAt < today) return { ok: false, error: "Esta proposta venceu — fale com a pousada." };
 
     // Robô: engole em silêncio (o cliente honesto nunca cai aqui).
@@ -726,7 +727,7 @@ export const RateQuotePublicService = {
 
     const q = data as RateQuoteRecord;
     if (!OPEN_STATUSES.includes(q.status)) return { ok: false, error: "Esta proposta não está mais disponível." };
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const today = todayPropertyIso();
     if (q.expiresAt && q.expiresAt < today) return { ok: false, error: "Esta proposta venceu — fale com a pousada." };
 
     // Trava: cadastro já enviado. Diferente do aceite (idempotente), reenviar
