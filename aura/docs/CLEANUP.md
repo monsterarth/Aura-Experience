@@ -1,7 +1,44 @@
 # Faxina do código — escopo e execução
 
-> **Status: ONDAS 0 e 1 EXECUTADAS em 30/08/2026** (−7.113 linhas, 72 arquivos, `pnpm build` limpo).
-> As Ondas 2 e 3 (consolidação e complexidade) seguem planejadas. Levantamento de 29-30/08/2026.
+> **Status: ONDAS 0, 1 e 2 EXECUTADAS** (30–31/08/2026, `pnpm build` limpo em todas).
+> A Onda 3 (complexidade e E/S) segue planejada. Levantamento de 29-30/08/2026.
+>
+> | Onda | Commit | Efeito |
+> |---|---|---|
+> | 0 — segurança | `d6c9dec` | proxy SSRF, segredos rastreados, 404 do portal |
+> | 1 — deleção | `c3f85b9` | −7.113 linhas em 72 arquivos |
+> | 2 — consolidação | `539c9c8` | 5 conceitos com dono único, 43 arquivos |
+
+## O que a Onda 2 fez (31/08)
+
+Cinco libs novas ou reforçadas, cada uma absorvendo cópias espalhadas:
+
+- **`@/lib/money`** — eram 5 convenções em ~25 arquivos. Duas estavam **erradas** para pt-BR:
+  `R$ 1234.56` (ponto decimal, sem milhar) em sete telas e `1234,56` sem milhar em outras cinco.
+  15 sítios migrados; ficaram de fora os `R$ ${...}` de log de auditoria e toast, por indicação do
+  próprio relatório.
+- **`@/lib/evolution`** — o envio pela Evolution estava inteiro em 3 rotas e a resolução de config em
+  mais 2, **já divergentes** (só o cron tinha o gate de `whatsappEnabled` e a checagem de número). A
+  lib fica com config + modo seguro + POST; cada rota manteve o que grava em `messages`, que diverge
+  de propósito. O gate virou **opção** em vez de padrão — ligá-lo para o envio manual é decisão de
+  produto, não faxina.
+- **`@/lib/dates`** — o kit morava dentro do `rate-engine`, o que obrigava `wedding-service` e
+  `crm-service` a importar o motor de tarifas para somar um dia (e cada um reescreveu o `addDays`).
+  Os dois "hoje" agora se distinguem pelo nome: `todayPropertyIso` (fuso da pousada, servidor) e o
+  `todayIso` de `event-dates` (fuso de quem olha, tela de hóspede). 13 cópias da mesma linha viraram
+  uma chamada. O `nightsBetween` do hsystem **não** entrou: tem `Math.max(1,…)`, semântica do sítio.
+- **`@/lib/multilang`** — ganhou `pickColumn`/`pickColumnList` para o formato de COLUNA
+  (`campo`/`campo_en`/`campo_es`), que estava reescrito em 6 telas do portal.
+- **push** — as 3 rotas de webhook mantinham cópias privadas de `fanOut`/`fanOutByRole`; 250 linhas
+  viraram 146. E a lista de países do check-in era cópia da de `@/lib/countries` (conferido:
+  subconjunto exato antes de trocar).
+
+**Não feito na Onda 2, e por quê:** `field-app-kit-duplicado` (o mini design-system copiado em 7 apps
+de campo) e os dois sistemas paralelos de botão/toggle são **projeto de UI**, não faxina — mexem em
+tela de camareira e de recepção e pedem verificação visual, não `pnpm build`. O
+`realtime-subscribe-teardown-boilerplate` (~20 sítios) e o `roles-convergence-stalled` continuam
+abertos. O `aura-kit-unconsumed-primitives` foi rebaixado na verificação (são blocos prescritos pela
+receita de página admin — agendados, não mortos) e fica como está.
 
 ## ⛔ Pendência que bloqueia o fechamento da Onda 0
 
