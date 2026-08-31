@@ -84,17 +84,6 @@ export const EventService = {
     return data as Event[];
   },
 
-  async getEventById(propertyId: string, id: string): Promise<Event | null> {
-    const { data, error } = await db()
-      .from('events')
-      .select('*')
-      .eq('id', id)
-      .eq('propertyId', propertyId)
-      .maybeSingle();
-
-    if (error || !data) return null;
-    return data as Event;
-  },
 
   /** `data` já vem saneado por `sanitizeEventInput` — a rota é a única porta. */
   async createEvent(

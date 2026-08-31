@@ -3,103 +3,13 @@
 // Escopo atual: a cadeia do launchFrigobar (createRequest → deliverRequest →
 // _calculateConsumptionCost) usa db(); os demais métodos só rodam no browser hoje.
 import { supabase, db } from "@/lib/supabase";
-import { ConciergeGroup, ConciergeItem, ConciergeRequest } from "@/types/aura";
+import { ConciergeItem, ConciergeRequest } from "@/types/aura";
 import { AuditService } from "./audit-service";
 import { StayService } from "./stay-service";
 import { assertFolioOpen } from '@/lib/folio-guard';
 import { StockIntegration, StockLevels } from "./stock-integration";
 
 export const ConciergeService = {
-
-  // ==========================================
-  // GROUPS
-  // ==========================================
-
-  async getGroups(propertyId: string): Promise<ConciergeGroup[]> {
-    const { data } = await supabase
-      .from('concierge_groups')
-      .select('*')
-      .eq('propertyId', propertyId)
-      .eq('active', true)
-      .order('order', { ascending: true });
-    return (data || []) as ConciergeGroup[];
-  },
-
-  async createGroup(
-    propertyId: string,
-    data: Omit<ConciergeGroup, 'id' | 'propertyId' | 'createdAt' | 'updatedAt'>,
-    actorId: string,
-    actorName: string
-  ): Promise<ConciergeGroup> {
-    const now = new Date().toISOString();
-    const payload = { ...data, id: crypto.randomUUID(), propertyId, createdAt: now, updatedAt: now };
-    const { data: created, error } = await supabase
-      .from('concierge_groups')
-      .insert(payload)
-      .select()
-      .single();
-    if (error) throw error;
-
-    await AuditService.log({
-      propertyId, userId: actorId, userName: actorName,
-      action: 'CREATE', entity: 'CONCIERGE', entityId: created.id,
-      details: `Grupo de concierge criado: ${data.name}`,
-    });
-
-    return created as ConciergeGroup;
-  },
-
-  async updateGroup(
-    propertyId: string,
-    groupId: string,
-    data: Partial<Omit<ConciergeGroup, 'id' | 'propertyId' | 'createdAt'>>,
-    actorId: string,
-    actorName: string
-  ): Promise<void> {
-    const { error } = await supabase
-      .from('concierge_groups')
-      .update({ ...data, updatedAt: new Date().toISOString() })
-      .eq('id', groupId)
-      .eq('propertyId', propertyId);
-    if (error) throw error;
-
-    const name = data.name ?? await this._groupName(groupId) ?? groupId;
-    await AuditService.log({
-      propertyId, userId: actorId, userName: actorName,
-      action: 'UPDATE', entity: 'CONCIERGE', entityId: groupId,
-      details: `Grupo de concierge atualizado: ${name}`,
-    });
-  },
-
-  async deleteGroup(
-    propertyId: string,
-    groupId: string,
-    actorId: string,
-    actorName: string
-  ): Promise<void> {
-    // Nome antes do update; e um log só (antes o updateGroup interno gerava um
-    // "atualizado" redundante junto do "desativado").
-    const name = await this._groupName(groupId) ?? groupId;
-    const { error } = await supabase
-      .from('concierge_groups')
-      .update({ active: false, updatedAt: new Date().toISOString() })
-      .eq('id', groupId)
-      .eq('propertyId', propertyId);
-    if (error) throw error;
-
-    await AuditService.log({
-      propertyId, userId: actorId, userName: actorName,
-      action: 'DELETE', entity: 'CONCIERGE', entityId: groupId,
-      details: `Grupo de concierge desativado: ${name}`,
-    });
-  },
-
-  /** Nome do grupo para logs legíveis (null se não encontrado). */
-  async _groupName(groupId: string): Promise<string | null> {
-    const { data } = await supabase
-      .from('concierge_groups').select('name').eq('id', groupId).maybeSingle();
-    return (data as { name?: string } | null)?.name ?? null;
-  },
 
   /** Nome do item para logs legíveis (null se não encontrado). */
   async _itemName(itemId: string): Promise<string | null> {
@@ -112,15 +22,6 @@ export const ConciergeService = {
   // CATALOG
   // ==========================================
 
-  async getConciergeItems(propertyId: string): Promise<ConciergeItem[]> {
-    const { data } = await supabase
-      .from('concierge_items')
-      .select('*, group:concierge_groups(*)')
-      .eq('propertyId', propertyId)
-      .eq('deleted', false)
-      .order('order', { ascending: true });
-    return this._annotateAvailability(propertyId, (data || []) as ConciergeItem[]);
-  },
 
   async getConciergeItemsForGuest(propertyId: string): Promise<ConciergeItem[]> {
     // db(): service-role no servidor. Pelo navegador do hóspede (anon) a RLS de
@@ -137,18 +38,6 @@ export const ConciergeService = {
     return this._annotateAvailability(propertyId, (data || []) as ConciergeItem[]);
   },
 
-  /** @deprecated A reposição da camareira saiu do Concierge — o catálogo agora é RestockService.getCatalog (produtos do estoque com maidRequestable). Sem chamadores vivos. */
-  async getConciergeItemsForMaid(propertyId: string): Promise<ConciergeItem[]> {
-    const { data } = await supabase
-      .from('concierge_items')
-      .select('*, group:concierge_groups(*)')
-      .eq('propertyId', propertyId)
-      .eq('active', true)
-      .eq('deleted', false)
-      .eq('availableForMaid', true)
-      .order('order', { ascending: true });
-    return this._annotateAvailability(propertyId, (data || []) as ConciergeItem[]);
-  },
 
   async getArchivedItems(propertyId: string): Promise<ConciergeItem[]> {
     const { data } = await supabase
@@ -308,19 +197,6 @@ export const ConciergeService = {
     return this._enrichRequests(data || []);
   },
 
-  async getTodayRequests(propertyId: string): Promise<ConciergeRequest[]> {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    const { data } = await supabase
-      .from('concierge_requests')
-      .select('*')
-      .eq('propertyId', propertyId)
-      .neq('status', 'pending')
-      .gte('createdAt', todayStart.toISOString())
-      .order('createdAt', { ascending: false });
-    return this._enrichRequests(data || []);
-  },
 
   // ==========================================
   // BILLING HELPERS

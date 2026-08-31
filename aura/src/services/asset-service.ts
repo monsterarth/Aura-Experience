@@ -398,11 +398,6 @@ export const AssetService = {
     }));
   },
 
-  async getDepreciationEntries(propertyId: string, assetId: string): Promise<AssetDepreciationEntry[]> {
-    const { data } = await db().from("asset_depreciation_entries")
-      .select("*").eq("propertyId", propertyId).eq("assetId", assetId).order("period", { ascending: false });
-    return (data ?? []) as AssetDepreciationEntry[];
-  },
 
   /**
    * Lança a depreciação do período (YYYY-MM) para os ativos lineares ativos.

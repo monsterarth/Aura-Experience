@@ -993,13 +993,6 @@ export const StockService = {
     return (data ?? []) as { productId: string; quantity: number; unitCost: number; createdAt: string }[];
   },
 
-  async getBalances(propertyId: string, productId?: string) {
-    let q = db().from("stock_balances").select("*").eq("propertyId", propertyId);
-    if (productId) q = q.eq("productId", productId);
-    const { data, error } = await q;
-    if (error) { console.error("getBalances", error); return []; }
-    return data ?? [];
-  },
 
   /**
    * Registra uma movimentação e atualiza saldos + custo médio.

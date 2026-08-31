@@ -25,7 +25,7 @@ No test framework is configured. Use `pnpm build` to catch type errors.
 
 ## Architecture
 
-**Stack**: Next.js 14 App Router · Supabase (Postgres + Auth + Realtime) · TypeScript · Tailwind CSS · Zustand · Sonner (toasts) · Vercel Blob (file uploads)
+**Stack**: Next.js 14 App Router · Supabase (Postgres + Auth + Realtime + Storage) · TypeScript · Tailwind CSS · Sonner (toasts)
 
 ### Roles
 
@@ -143,7 +143,7 @@ Located in `src/app/actions/` (e.g. `dnd-actions.ts`, `concierge-actions.ts`). U
 
 ### File uploads
 
-Use `src/components/admin/ImageUpload.tsx` with props `value`, `onUploadSuccess`, `path`. Backed by Vercel Blob.
+Use `src/components/admin/ImageUpload.tsx` with props `value`, `onUploadSuccess`, `path`. Backed by Supabase Storage (bucket `images`) via `/api/upload`.
 
 ### Where things live (repo map)
 
@@ -204,6 +204,11 @@ Deeper docs live in `docs/`, read on demand:
 - `docs/FISCAL.md` — plano da emissão fiscal própria (NFS-e + NFC-e via API terceirizada), o último
   pré-requisito para largar o HMAX. Não iniciado; traz as perguntas que dependem da contabilidade.
 - `docs/REFACTORING.md` — plan for splitting the largest files (not yet executed).
+- `docs/CLEANUP.md` — escopo de faxina levantado em 29/08/2026 (61 achados verificados: código morto,
+  dependências não usadas, duplicação, E/S redundante), organizado em ondas para uma sprint dedicada.
+  Não iniciado. **A Onda 0 é segurança** (segredo de produção commitado em `scripts/dev/`, `/api/media`
+  como proxy aberto sem auth, chave GCP órfã) — atacar antes do resto. Traz também as regras de
+  "isto parece morto mas não é" (cron externo, webhook, rota montada por string).
 - `docs/MODULARIZATION.md` — core × módulos / planos por propriedade. Execution deferred, but its **section 1 rules apply NOW** to all new code: new module → settings flag day one; core flows never hard-depend on module tables (soft check, default ON — `stock-integration.ts` pattern); new crons skip properties without the module.
 
 Area-specific `CLAUDE.md` files are auto-loaded when working in: `src/services/`, `src/app/admin/`, `src/app/api/`, `src/app/check-in/`.

@@ -27,16 +27,6 @@ export function getTaskColorClass(type: TaskType): string {
   }
 }
 
-export function getTaskBgClass(type: TaskType): string {
-  switch (type) {
-    case 'turnover':            return 'bg-orange-500/10 text-orange-600';
-    case 'inspection_checkin':  return 'bg-violet-500/10 text-violet-600';
-    case 'inspection_checkout': return 'bg-violet-500/10 text-violet-600';
-    case 'daily':               return 'bg-blue-500/10 text-blue-600';
-    case 'linen_change':        return 'bg-teal-500/10 text-teal-600';
-    case 'custom':              return 'bg-zinc-500/10 text-zinc-400';
-  }
-}
 
 // Mostra botão de frigobar (conferência de consumo)
 export function showsMinibar(type: TaskType): boolean {

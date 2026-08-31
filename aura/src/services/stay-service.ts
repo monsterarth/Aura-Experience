@@ -228,15 +228,6 @@ export const StayService = {
     return { accessCode, groupId, stayId: payloads[0].id };
   },
 
-  async getStayWithGuest(propertyId: string, stayId: string) {
-    const { data: stay } = await supabase.from('stays').select('*').eq('id', stayId).eq('propertyId', propertyId).single();
-    if (!stay) return null;
-
-    const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).maybeSingle();
-
-    return { stay: stay as Stay, guest: guest as Guest | null };
-  },
-
   async savePreCheckinDraft(
     propertyId: string,
     stayId: string,
@@ -403,32 +394,6 @@ export const StayService = {
     });
   },
 
-  /** Busca apenas o idioma preferido do hóspede — usado no boot do portal sem
-   *  refetch do stay/cabin completos (getStayWithGuestAndCabin). */
-  async getGuestPreferredLanguage(guestId?: string | null): Promise<string | null> {
-    if (!guestId) return null;
-    const { data } = await supabase
-      .from('guests')
-      .select('preferredLanguage')
-      .eq('id', guestId)
-      .maybeSingle();
-    return (data as any)?.preferredLanguage ?? null;
-  },
-
-  /** Nome do titular + idioma preferido em uma consulta (portal: hero e café). */
-  async getGuestNameAndLang(guestId?: string | null): Promise<{ fullName: string | null; preferredLanguage: string | null }> {
-    if (!guestId) return { fullName: null, preferredLanguage: null };
-    const { data } = await supabase
-      .from('guests')
-      .select('fullName, preferredLanguage')
-      .eq('id', guestId)
-      .maybeSingle();
-    return {
-      fullName: (data as any)?.fullName ?? null,
-      preferredLanguage: (data as any)?.preferredLanguage ?? null,
-    };
-  },
-
   async getGroupStays(accessCode: string) {
     const { data: stays, error } = await db()
       .from('stays')
@@ -476,39 +441,6 @@ export const StayService = {
     const res = await fetch(`/api/admin/stays/${stayId}`);
     if (!res.ok) return null;
     return res.json() as Promise<{ stay: Stay; guest: Guest | null; cabin: Cabin | null }>;
-  },
-
-  async getStaysByStatus(propertyId: string, statusList: string[]) {
-    try {
-      const { data: stays, error } = await supabase
-        .from('stays')
-        .select('*')
-        .eq('propertyId', propertyId)
-        .in('status', statusList)
-        .order('checkIn', { ascending: true });
-
-      if (error || !stays) return [];
-
-      const enriched = await Promise.all(stays.map(async (stay: any) => {
-        const [gRes, cRes] = await Promise.all([
-          supabase.from('guests').select('fullName').eq('id', stay.guestId).maybeSingle(),
-          stay.cabinId
-            ? supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle()
-            : Promise.resolve({ data: null })
-        ]);
-
-        return {
-          ...stay,
-          guestName: gRes.data ? gRes.data.fullName : "Hóspede desconhecido",
-          cabinName: cRes.data ? cRes.data.name : "Sem Cabana"
-        };
-      }));
-
-      return enriched as any[]; // casting since we mixed frontend extra fields
-    } catch (error) {
-      console.error("Erro ao listar estadias:", error);
-      return [];
-    }
   },
 
   async performCheckIn(propertyId: string, stayId: string, actorId: string, actorName: string) {
@@ -866,18 +798,6 @@ export const StayService = {
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
       details: `Lançou item na conta: ${item.quantity}x ${item.description}`
-    });
-  },
-
-  async toggleFolioItemStatus(propertyId: string, stayId: string, itemId: string, newStatus: 'pending' | 'paid', actorId: string, actorName: string) {
-    await supabase.from('folio_items').update({ status: newStatus }).eq('id', itemId);
-
-    const { count } = await supabase.from('folio_items').select('*', { count: 'exact', head: true }).eq('stayId', stayId).eq('status', 'pending');
-    await supabase.from('stays').update({ hasOpenFolio: (count || 0) > 0 }).eq('id', stayId);
-
-    await AuditService.log({
-      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
-      details: `Marcou o item da conta como ${newStatus === 'paid' ? 'Pago/Lançado' : 'Pendente'}.`
     });
   },
 

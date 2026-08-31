@@ -7,7 +7,7 @@ manutenção, etc.) e o portal do hóspede — tudo sobre um backend Supabase.
 ## Stack
 
 Next.js 14 (App Router) · Supabase (Postgres + Auth + Realtime) · TypeScript · Tailwind CSS ·
-Zustand · Sonner · Vercel Blob. Deploy na Vercel.
+Sonner. Deploy na Vercel.
 
 ## Começando
 

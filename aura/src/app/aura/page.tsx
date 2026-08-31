@@ -1069,9 +1069,12 @@ export default async function AuraHomePage() {
 
           <div className="border-t border-white/5 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
             <p>© {new Date().getFullYear()} Aura Software. Todos os direitos reservados.</p>
-            <p className="font-light">
-              Construído para continuidade, integração e visão.
-            </p>
+            <div className="flex items-center gap-4">
+              <Link href="/termos" className="hover:text-gray-300 transition-colors">
+                Termos de uso
+              </Link>
+              <span className="font-light">Construído para continuidade, integração e visão.</span>
+            </div>
           </div>
         </div>
       </footer>

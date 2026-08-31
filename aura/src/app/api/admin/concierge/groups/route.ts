@@ -1,7 +1,14 @@
+// Grupos do catálogo de Concierge — CAMINHO OFICIAL de leitura/escrita.
+//
+// Antes o catálogo era escrito pelo browser via ConciergeService, e estas rotas existiam sem
+// nenhum chamador — duas metades da mesma operação, divergindo em silêncio (a rota não logava
+// auditoria e a leitura não filtrava `active`). A escrita passou para cá: rota + service-role,
+// como manda o padrão do admin e o histórico de write pelo browser pendurar no lock frio.
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { serverError } from '@/lib/api-error';
+import { AuditService } from '@/services/audit-service';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'reception', 'governance']);
@@ -16,6 +23,7 @@ export async function GET(request: NextRequest) {
     .from('concierge_groups')
     .select('*')
     .eq('propertyId', propertyId)
+    .eq('active', true)
     .order('order', { ascending: true });
 
   if (error) return serverError('concierge/groups', error);
@@ -54,5 +62,16 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) return serverError('concierge/groups', error);
+
+  await AuditService.log({
+    propertyId,
+    userId: auth.staff.id,
+    userName: auth.staff.fullName,
+    action: 'CREATE',
+    entity: 'CONCIERGE',
+    entityId: data.id,
+    details: `Grupo de concierge criado: ${name}`,
+  });
+
   return NextResponse.json(data);
 }

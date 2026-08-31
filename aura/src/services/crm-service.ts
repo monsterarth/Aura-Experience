@@ -193,9 +193,6 @@ export const CrmService = {
     };
   },
 
-  async saveQuoteLeadSettings(propertyId: string, lead: WeddingLeadSettings): Promise<void> {
-    await mergePropertySettings(propertyId, { crmQuoteLead: lead });
-  },
 
   // ── Pipeline do Hub Comercial ──────────────────────────────────────────────
 

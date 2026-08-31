@@ -21,7 +21,3 @@ export function parseMultiLang(val: unknown, fallback: MultiLangObj = EMPTY_MULT
   };
 }
 
-/** true se não há texto em nenhum idioma — útil para validação de "campo obrigatório". */
-export function isMultiLangEmpty(v?: MultiLangObj | null): boolean {
-  return !v || (!v.pt?.trim() && !v.en?.trim() && !v.es?.trim());
-}

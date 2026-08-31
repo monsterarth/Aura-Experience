@@ -49,17 +49,6 @@ export const StructureService = {
         return data as Structure[];
     },
 
-    async getStructure(propertyId: string, structureId: string): Promise<Structure | null> {
-        const { data, error } = await supabase
-            .from('structures')
-            .select('*')
-            .eq('id', structureId)
-            .eq('propertyId', propertyId)
-            .single();
-
-        if (error || !data) return null;
-        return data as Structure;
-    },
 
     async createStructure(propertyId: string, data: Omit<Structure, 'id' | 'createdAt'>, actorId: string, actorName: string): Promise<string> {
         const id = crypto.randomUUID();
@@ -108,18 +97,6 @@ export const StructureService = {
         });
     },
 
-    // Estrutura marcada como salão do café — fonte única do horário (operatingHours)
-    // e da localização no mapa do café. Retorna null se nenhuma estiver marcada.
-    async getBreakfastVenue(propertyId: string): Promise<Structure | null> {
-        const { data } = await supabase
-            .from('structures')
-            .select('*')
-            .eq('propertyId', propertyId)
-            .eq('isBreakfastVenue', true)
-            .limit(1)
-            .maybeSingle();
-        return (data as Structure) ?? null;
-    },
 
     // Define (exclusivamente) qual estrutura é o salão do café: limpa as demais
     // e marca a escolhida. structureId=null apenas remove a marcação atual.
@@ -324,28 +301,7 @@ export const StructureService = {
         });
     },
 
-    async getBookingsByDate(propertyId: string, structureId: string, date: string): Promise<StructureBooking[]> {
-        const { data, error } = await supabase
-            .from('structure_bookings')
-            .select('*')
-            .eq('propertyId', propertyId)
-            .eq('structureId', structureId)
-            .eq('date', date);
 
-        if (error) return [];
-        return data as StructureBooking[];
-    },
-
-    async getAllBookingsByDate(propertyId: string, date: string): Promise<StructureBooking[]> {
-        const { data, error } = await supabase
-            .from('structure_bookings')
-            .select('*')
-            .eq('propertyId', propertyId)
-            .eq('date', date);
-
-        if (error) { console.error("getAllBookingsByDate error:", error); return []; }
-        return data as StructureBooking[];
-    },
 
     async createBooking(propertyId: string, booking: Omit<StructureBooking, 'id' | 'createdAt'>, actorId: string, actorName: string): Promise<string> {
         const id = crypto.randomUUID();

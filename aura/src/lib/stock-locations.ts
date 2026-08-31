@@ -24,10 +24,3 @@ export function splitLocations(locations: StockLocation[]): { flat: StockLocatio
     cabinBacked: locations.filter(isCabinBacked),
   };
 }
-
-/** Ordena cabanas por número de verdade: "10" depois de "9", não antes. */
-export function byCabinNumber<T extends { number: string }>(a: T, b: T): number {
-  const na = Number(a.number), nb = Number(b.number);
-  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
-  return a.number.localeCompare(b.number, undefined, { numeric: true });
-}

@@ -5,7 +5,7 @@ serving an **admin back-office**, **role-specific mobile field apps**, and a **g
 all on a shared Supabase backend.
 
 **Stack**: Next.js 14 (App Router) · Supabase (Postgres + Auth + Realtime) · TypeScript ·
-Tailwind CSS · Zustand (client state) · Sonner (toasts) · Vercel Blob (uploads).
+Tailwind CSS · Sonner (toasts) · Supabase Storage (uploads).
 
 ## Surfaces
 
@@ -81,7 +81,7 @@ channel is torn down while still connecting.
 - **Server/shared data** → fetched per page via API routes (no global cache layer).
 - **Cross-cutting client state** → React Context: `AuthContext`, `PropertyContext`,
   `NotificationContext` (`src/context/`).
-- **Local/ephemeral UI state** → Zustand stores and component `useState`.
+- **Local/ephemeral UI state** → component `useState` (there is no global store library).
 
 ## Notifications & messaging
 
@@ -100,7 +100,7 @@ Several channels, kept in services:
 ## File uploads
 
 `src/components/admin/ImageUpload.tsx` (props `value`, `onUploadSuccess`, `path`) backed by
-**Vercel Blob** (`BLOB_READ_WRITE_TOKEN`); routes under `/api/upload`.
+**Supabase Storage** (bucket `images`); routes under `/api/upload`.
 
 ## i18n
 

@@ -69,8 +69,3 @@ export function roleShortLabel(role?: string | null): string {
   return ROLE_SHORT_LABELS[role as UserRole] ?? role;
 }
 
-/** Índice de ordenação; cargo desconhecido vai para o fim, não para o começo. */
-export function roleRank(role?: string | null): number {
-  const i = ROLE_ORDER.indexOf(role as UserRole);
-  return i === -1 ? ROLE_ORDER.length : i;
-}

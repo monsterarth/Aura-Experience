@@ -144,12 +144,6 @@ export const BreakfastSalonService = {
       .eq('id', attendanceId);
   },
 
-  async moveGuest(attendanceId: string, newTableId: string): Promise<void> {
-    await supabase
-      .from('breakfast_attendance')
-      .update({ tableId: newTableId })
-      .eq('id', attendanceId);
-  },
 
   async guestLeft(attendanceId: string, propertyId?: string, guestName?: string): Promise<void> {
     await supabase
@@ -184,18 +178,6 @@ export const BreakfastSalonService = {
       .eq('id', attendanceId);
   },
 
-  // Busca attendance do dia por stayId (para o portal do hóspede)
-  async getAttendanceByStay(propertyId: string, stayId: string): Promise<BreakfastAttendance | null> {
-    const today = new Date().toISOString().split('T')[0];
-    const { data } = await supabase
-      .from('breakfast_attendance')
-      .select('*')
-      .eq('propertyId', propertyId)
-      .eq('stayId', stayId)
-      .eq('date', today)
-      .maybeSingle();
-    return data as BreakfastAttendance | null;
-  },
 
   // ==========================================
   // MESAS

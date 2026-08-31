@@ -18,7 +18,3 @@ export function stayDisplayName(stay: InternalInfo, guestName?: string | null, f
   return guestName?.trim() || fallback;
 }
 
-/** true quando a estadia é uma ocupação interna (deve ganhar selo "Uso da Casa"). */
-export function isInternalStay(stay: InternalInfo): boolean {
-  return !!stay?.internalUse;
-}

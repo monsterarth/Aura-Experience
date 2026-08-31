@@ -38,53 +38,6 @@ export const AuditService = {
     }
   },
 
-  async getEntityHistory(entityId: string, propertyId: string) {
-    try {
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .eq('propertyId', propertyId)
-        .eq('entityId', entityId)
-        .order('timestamp', { ascending: false });
 
-      if (error) throw error;
-      return data as AuditLog[];
-    } catch (error) {
-      console.error("Erro ao buscar histórico de auditoria:", error);
-      return [];
-    }
-  },
 
-  async getPropertyRecentActivity(propertyId: string, maxLogs: number = 20) {
-    try {
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .eq('propertyId', propertyId)
-        .order('timestamp', { ascending: false })
-        .limit(maxLogs);
-
-      if (error) throw error;
-      return data as AuditLog[];
-    } catch (error) {
-      console.error("Erro ao buscar atividade recente:", error);
-      return [];
-    }
-  },
-
-  async getGlobalActivity(maxLogs: number = 50) {
-    try {
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('*')
-        .order('timestamp', { ascending: false })
-        .limit(maxLogs);
-
-      if (error) throw error;
-      return data as AuditLog[];
-    } catch (error) {
-      console.error("Erro ao buscar logs globais:", error);
-      return [];
-    }
-  }
 };

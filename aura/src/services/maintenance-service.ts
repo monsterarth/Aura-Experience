@@ -286,10 +286,4 @@ export const MaintenanceService = {
         });
     },
 
-    async updateRuleLastTriggered(propertyId: string, ruleId: string, timestamp: string) {
-        await db().from('maintenance_rules')
-            .update({ lastTriggeredAt: timestamp, updatedAt: timestamp })
-            .eq('id', ruleId)
-            .eq('propertyId', propertyId);
-    },
 };

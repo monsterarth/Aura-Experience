@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { Contact, ContactContext, Stay, Cabin } from "@/types/aura";
+import { Contact, Stay, Cabin } from "@/types/aura";
 import { AuditService } from "./audit-service";
 
 function safeToDate(val: any): Date | null {
@@ -240,95 +240,4 @@ export class ContactService {
     }
   }
 
-  static async resolveContactContext(propertyId: string, phoneId: string): Promise<ContactContext> {
-    const defaultContext: ContactContext = { status: 'none', message: "Contato sem histórico de estadias." };
-
-    try {
-      const { data: contact } = await supabase.from('contacts').select('*').eq('id', phoneId).eq('propertyId', propertyId).maybeSingle();
-      if (!contact) return defaultContext;
-
-      if (!contact.isGuest) {
-        return { status: 'none', message: "Contato avulso (Não é hóspede)." };
-      }
-
-      // Collect all guests linked to this phone:
-      // 1. Guests whose phone was stored as digits (the standard path via stays/new)
-      const { data: guestsByPhone } = await supabase
-        .from('guests')
-        .select('id, fullName')
-        .eq('propertyId', propertyId)
-        .eq('phone', phoneId);
-
-      const guestMap = new Map<string, string>(); // id → fullName
-      for (const g of guestsByPhone ?? []) guestMap.set(g.id, g.fullName);
-
-      // 2. Always include the contact's primary guestId as a fallback
-      if (contact.guestId && !guestMap.has(contact.guestId)) {
-        const { data: primary } = await supabase.from('guests').select('id, fullName').eq('id', contact.guestId).eq('propertyId', propertyId).maybeSingle();
-        if (primary) guestMap.set(primary.id, primary.fullName);
-      }
-
-      if (guestMap.size === 0) return defaultContext;
-
-      // Build one ContactContext per guest (using their most relevant stay)
-      const STATUS_PRIORITY: Record<string, number> = { active: 0, pending: 1, past: 2, none: 3 };
-
-      const buildGuestContext = async (guestId: string, guestName: string): Promise<ContactContext | null> => {
-        const { data: staysRaw } = await supabase
-          .from('stays')
-          .select('*')
-          .eq('propertyId', propertyId)
-          .eq('guestId', guestId)
-          .order('checkIn', { ascending: false })
-          .limit(5);
-
-        if (!staysRaw?.length) return null;
-        const stays = staysRaw as Stay[];
-
-        const activeStay  = stays.find(s => ['active', 'in_house'].includes(s.status));
-        const pendingStay = stays.find(s => ['pending', 'pre_checkin_done', 'reserved', 'confirmed'].includes(s.status));
-        const pastStay    = stays.find(s => ['finished', 'archived', 'checked_out'].includes(s.status));
-        const relevantStay = activeStay || pendingStay || pastStay;
-        if (!relevantStay) return null;
-
-        let cabinName = "Acomodação";
-        const mainCabinId = relevantStay.cabinConfigs?.[0]?.cabinId || relevantStay.cabinId;
-        if (mainCabinId) {
-          const { data: cabin } = await supabase.from('cabins').select('name').eq('id', mainCabinId).eq('propertyId', propertyId).maybeSingle();
-          if (cabin) cabinName = cabin.name;
-        }
-
-        const checkInDate  = safeToDate(relevantStay.checkIn);
-        const checkOutDate = safeToDate(relevantStay.checkOut);
-
-        if (activeStay) {
-          return { status: 'active', stayId: activeStay.id, guestName, cabinName, checkIn: checkInDate ?? undefined, checkOut: checkOutDate ?? undefined, message: `🟢 ${guestName} — ${cabinName}` };
-        }
-        if (pendingStay) {
-          const checkInStr = checkInDate ? checkInDate.toLocaleDateString('pt-BR') : 'Breve';
-          const isToday = checkInDate && checkInDate.toDateString() === new Date().toDateString();
-          return { status: 'pending', stayId: pendingStay.id, guestName, cabinName, checkIn: checkInDate ?? undefined, checkOut: checkOutDate ?? undefined, message: isToday ? `🟡 ${guestName} — Chega HOJE em ${cabinName}` : `🟡 ${guestName} — Chega dia ${checkInStr} em ${cabinName}` };
-        }
-        // past
-        const checkOutStr = checkOutDate ? checkOutDate.toLocaleDateString('pt-BR') : 'Data Indisponível';
-        return { status: 'past', stayId: pastStay!.id, guestName, cabinName, checkIn: checkInDate ?? undefined, checkOut: checkOutDate ?? undefined, message: `⚪️ ${guestName} — Saiu em ${checkOutStr} (${cabinName})` };
-      };
-
-      const settled = await Promise.all(
-        Array.from(guestMap.entries()).map(([id, name]) => buildGuestContext(id, name))
-      );
-      const allContexts = settled.filter((c): c is ContactContext => c !== null)
-        .sort((a, b) => (STATUS_PRIORITY[a.status] ?? 3) - (STATUS_PRIORITY[b.status] ?? 3));
-
-      if (allContexts.length === 0) return defaultContext;
-
-      // Primary = highest priority context
-      const primary = allContexts[0];
-      return { ...primary, allContexts };
-
-    } catch (error) {
-      console.error("Erro ao resolver contexto do contato:", error);
-      return defaultContext;
-    }
-  }
 }

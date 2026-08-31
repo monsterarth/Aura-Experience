@@ -140,10 +140,6 @@ export function openChips(chips: AccountChip[]): AccountChip[] {
   return chips.filter(c => c.state === "alert" || c.state === "warn");
 }
 
-/** Ciclo fechado: nada vermelho nem amarelo. */
-export function accountIsClear(chips: AccountChip[]): boolean {
-  return openChips(chips).length === 0;
-}
 
 /** Fez check-out e a conta ainda não foi encerrada — fica em Ativas até fechar. */
 export function isAccountOpen(stay: StayLike): boolean {

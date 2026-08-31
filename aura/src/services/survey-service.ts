@@ -20,22 +20,6 @@ export interface SurveyInsight {
 }
 
 export class SurveyService {
-  static async getStayContextForFeedback(stayId: string): Promise<{ stay: Stay; propertyId: string } | null> {
-    try {
-      const { data } = await supabase
-        .from('stays')
-        .select('*')
-        .eq('id', stayId)
-        .maybeSingle();
-
-      if (!data) return null;
-      return { stay: data as Stay, propertyId: data.propertyId };
-    } catch (error) {
-      console.error("Erro ao buscar contexto da estadia:", error);
-      return null;
-    }
-  }
-
   static async hasSurveyForStay(propertyId: string, stayId: string): Promise<boolean> {
     try {
       // db(): pelo navegador do hóspede (anon) a RLS de survey_responses devolve
@@ -50,21 +34,6 @@ export class SurveyService {
       return (count ?? 0) > 0;
     } catch (error) {
       return false;
-    }
-  }
-
-  static async getActiveTemplate(propertyId: string): Promise<SurveyTemplate | null> {
-    try {
-      const { data } = await supabase
-        .from('survey_templates')
-        .select('*')
-        .eq('propertyId', propertyId)
-        .eq('isDefault', true)
-        .maybeSingle();
-
-      return data ? (data as SurveyTemplate) : null;
-    } catch (error) {
-      return null;
     }
   }
 
@@ -188,42 +157,6 @@ export class SurveyService {
     }
   }
 
-  static async submitSurvey(
-    propertyId: string,
-    stayId: string,
-    guestId: string,
-    template: SurveyTemplate,
-    answersRecord: Record<string, any>
-  ): Promise<{ success: boolean; error?: string }> {
-    try {
-      if (await this.hasSurveyForStay(propertyId, stayId)) {
-        return { success: false, error: "Esta pesquisa já foi respondida." };
-      }
-
-      // Destaque livre longo vira comentário (chip precisa ser rótulo) — igual à rota do hóspede.
-      const answers = normalizeSurveyAnswers(
-        Object.entries(answersRecord).map(([questionId, value]) => ({ questionId, value }))
-      );
-      const metrics = computeSurveyMetrics(template, answers);
-
-      const id = crypto.randomUUID();
-      await supabase.from('survey_responses').insert({
-        id, propertyId, stayId, guestId, templateId: template.id, answers, metrics
-      });
-
-      await supabase.from('stays').update({ hasSurvey: true, npsScore: metrics.npsScore ?? null }).eq('id', stayId);
-
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: "Falha ao enviar sua avaliação. Tente novamente." };
-    }
-  }
-
-  static async getResponses(propertyId: string): Promise<SurveyResponse[]> {
-    const { data } = await supabase.from('survey_responses').select('*').eq('propertyId', propertyId).order('createdAt', { ascending: false });
-    return (data || []) as SurveyResponse[];
-  }
-
   // Respostas + contexto da estadia (cabana, hóspede, datas). O painel mostra a cabana
   // e ordena por check-out: o id da reserva não diz nada para quem lê o card.
   static async getResponsesWithStay(propertyId: string): Promise<SurveyResponseWithStay[]> {
@@ -272,16 +205,4 @@ export class SurveyService {
     });
   }
 
-  static async getLatestInsight(propertyId: string, period: 'daily' | 'weekly' | 'monthly' | 'yearly' = 'daily'): Promise<SurveyInsight | null> {
-    const { data } = await supabase
-      .from('survey_insights')
-      .select('*')
-      .eq('propertyId', propertyId)
-      .eq('period', period)
-      .order('createdAt', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    return data ? (data as SurveyInsight) : null;
-  }
 }

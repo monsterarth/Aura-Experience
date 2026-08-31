@@ -191,8 +191,19 @@ export function useConcierge(tab: Tab) {
     setSavingGroup(true);
     try {
       const payload = { name: groupForm.name.trim(), icon: groupForm.icon, color: groupForm.color, order: parseInt(groupForm.order) || 0, active: true };
-      if (editingGroupId) { await ConciergeService.updateGroup(property.id, editingGroupId, payload, userData.id, userData.fullName); toast.success("Grupo atualizado."); }
-      else { await ConciergeService.createGroup(property.id, payload, userData.id, userData.fullName); toast.success("Grupo criado."); }
+      const res = editingGroupId
+        ? await fetch(`/api/admin/concierge/groups/${editingGroupId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ propertyId: property.id, ...payload }),
+          })
+        : await fetch(`/api/admin/concierge/groups`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ propertyId: property.id, ...payload }),
+          });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "save-error");
+      toast.success(editingGroupId ? "Grupo atualizado." : "Grupo criado.");
       setShowGroupForm(false); setEditingGroupId(null); await loadCatalog();
     } catch (err: unknown) { toast.error(err instanceof Error && err.message ? err.message : "Erro ao salvar grupo."); }
     finally { setSavingGroup(false); }
@@ -203,7 +214,11 @@ export function useConcierge(tab: Tab) {
     const ok = await confirm({ title: `Remover o grupo “${g.name}”?`, description: "Os itens continuam no catálogo, só perdem o agrupamento.", confirmLabel: "Remover", tone: "danger" });
     if (!ok) return;
     try {
-      await ConciergeService.deleteGroup(property.id, g.id, userData.id, userData.fullName);
+      const res = await fetch(
+        `/api/admin/concierge/groups/${g.id}?${new URLSearchParams({ propertyId: property.id })}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error("delete-error");
       toast.success("Grupo removido.");
       await loadCatalog();
     } catch { toast.error("Erro ao remover grupo."); }
