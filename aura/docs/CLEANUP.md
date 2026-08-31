@@ -1,13 +1,48 @@
 # Faxina do código — escopo e execução
 
-> **Status: ONDAS 0, 1 e 2 EXECUTADAS** (30–31/08/2026, `pnpm build` limpo em todas).
-> A Onda 3 (complexidade e E/S) segue planejada. Levantamento de 29-30/08/2026.
+> **Status: ONDAS 0, 1, 2 e 3-A EXECUTADAS** (30–31/08/2026, `pnpm build` limpo em todas).
+> Falta a **3-B** (fatiar arquivos grandes). Levantamento de 29-30/08/2026.
 >
 > | Onda | Commit | Efeito |
 > |---|---|---|
 > | 0 — segurança | `d6c9dec` | proxy SSRF, segredos rastreados, 404 do portal |
 > | 1 — deleção | `c3f85b9` | −7.113 linhas em 72 arquivos |
 > | 2 — consolidação | `539c9c8` | 5 conceitos com dono único, 43 arquivos |
+> | 3-A — E/S e egress | `362f075` | menos coluna baixada, menos ida ao banco |
+
+## O que a Onda 3-A fez (31/08) — feita com o egress em 110% da cota
+
+Nenhuma destas mudanças gasta egress; todas cortam.
+
+- **Funil comercial** — `select("*")` em 500 orçamentos + 500 casamentos a cada carga, e a tela
+  recarrega após cada ação. Agora 24 colunas de ~45 (fora: `intake` com acompanhantes e endereço, e
+  `notes`) e 13 de 41 no casamento. **A lista está amarrada aos mappers por comentário porque coluna
+  esquecida não quebra o build — some do cartão em silêncio.**
+- **Cron de automações** — varria toda estadia aberta com `select("*")` todo dia para decidir com
+  sete campos. Virou varredura estreita; a linha inteira (que a expansão de variáveis do template
+  precisa) vem só para quem dispara, em paralelo com o hóspede.
+- **Histórico de cabana da governanta** — trazia o JSON do checklist de 40 tarefas para exibir nove
+  campos (a mesma coluna que fez a rota antiga pesar 779 kB).
+- **Painel do diretor** — ~25 queries por evento de realtime em cinco tabelas, sem debounce nem
+  guarda. Uma baixa de estoque gera evento em `stock_movements` **e** `stock_balances`, então o rush
+  do café multiplicava. Agora junta em 2 s e não empilha carga sobre carga.
+- **GET de orçamentos sem filtro** — devolvia 400 linhas gordas e nenhuma tela chama assim. Passa a
+  exigir o filtro (400 com a mensagem) em vez de ser deletado, porque pode haver script manual.
+- **Latência (não é egress):** `saveQuote` esperava três leituras independentes em fila — e todo
+  Salvar e todo Copiar passam ali; `/api/guest/today` fazia seis idas ao banco antes da primeira
+  pintura do portal, agora três ondas (a checagem de posse continua antes de tudo).
+- **Reordenação de cardápio** — um UPDATE por linha, sequencial, com o erro de cada um ignorado.
+  Agora paralelo com erro agregado. Paralelo e **não** upsert de propósito: upsert com linha parcial
+  manda NULL nas colunas ausentes.
+
+### Onda 3-B — não feita, e por quê
+
+Fatiar `governanta/page.tsx` (2.627), `NewQuoteWizard.tsx` (2.328), `rate-service.ts` (2.260),
+`check-in/form` (1.997) e `types/aura.ts` (3.474) é **refactor mecânico de alto volume com ganho zero
+em runtime** — o oposto do perfil da 3-A. Vale fazer com o app rodando à frente para conferir tela por
+tela, não numa sessão de limpeza. O `maid-checklist-browser-io` também ficou: é escrita pelo client do
+browser num app de campo (viola a regra do `CLAUDE.md` e é a classe do incidente do lock frio), mas
+exige rota `/api/field/*` nova e teste com camareira — é entrega, não faxina.
 
 ## O que a Onda 2 fez (31/08)
 
