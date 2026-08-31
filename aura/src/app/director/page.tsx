@@ -1755,16 +1755,30 @@ export default function DirectorPage() {
   const [loading, setLoading] = useState(true);
   const subscribedRef = useRef(false);
 
+  const inFlightRef = useRef(false);
+  const pendingRef = useRef(false);
+
   const loadDashboard = useCallback(async (silent = false) => {
     if (!property?.id) return;
+    // Uma carga por vez. O painel roda ~25 queries por chamada; sem esta trava,
+    // eventos que chegam durante a carga empilhavam cargas inteiras em paralelo.
+    if (inFlightRef.current) { pendingRef.current = true; return; }
+    inFlightRef.current = true;
     if (!silent) setLoading(true);
     try {
       const res = await fetch(`/api/director/dashboard?propertyId=${property.id}`);
       if (res.ok) setData(await res.json());
     } finally {
+      inFlightRef.current = false;
       if (!silent) setLoading(false);
+      // Chegou evento enquanto carregava: recarrega UMA vez, não uma por evento.
+      if (pendingRef.current) { pendingRef.current = false; void loadDashboardRef.current?.(true); }
     }
   }, [property?.id]);
+
+  // O debounce precisa enxergar a versão atual do loader sem recriar o canal.
+  const loadDashboardRef = useRef(loadDashboard);
+  useEffect(() => { loadDashboardRef.current = loadDashboard; }, [loadDashboard]);
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
@@ -1772,15 +1786,26 @@ export default function DirectorPage() {
   useEffect(() => {
     if (!property?.id) return;
     const supabase = createClientBrowserAuto();
+
+    // Uma baixa de estoque gera evento em stock_movements E stock_balances (um
+    // por linha afetada). Sem juntar, o rush do café da manhã disparava o
+    // dashboard inteiro dezenas de vezes seguidas. Dois segundos de atraso num
+    // painel gerencial não custam nada.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const bump = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; void loadDashboardRef.current(true); }, 2000);
+    };
+
     const channel = supabase.channel(`director_rt_${property.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stays', filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'housekeeping_tasks', filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'concierge_requests', filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_movements', filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_balances', filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stays', filter: `propertyId=eq.${property.id}` }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'housekeeping_tasks', filter: `propertyId=eq.${property.id}` }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'concierge_requests', filter: `propertyId=eq.${property.id}` }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_movements', filter: `propertyId=eq.${property.id}` }, bump)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_balances', filter: `propertyId=eq.${property.id}` }, bump)
       .subscribe((status: string) => { subscribedRef.current = status === 'SUBSCRIBED'; });
-    return () => { supabase.removeChannel(channel); };
-  }, [property?.id, loadDashboard]);
+    return () => { if (timer) clearTimeout(timer); supabase.removeChannel(channel); };
+  }, [property?.id]);
 
   const handleNavChange = (s: NavSection) => {
     setSection(s);

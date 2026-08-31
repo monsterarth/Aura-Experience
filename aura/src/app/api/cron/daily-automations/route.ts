@@ -82,8 +82,12 @@ export async function GET(request: Request) {
         return acc;
       }, {} as Record<string, MessageTemplate>);
 
+      // Varredura ESTREITA: roda sobre toda estadia aberta, todo dia. A decisão
+      // de disparo lê só estes sete campos — o `select("*")` trazia junto
+      // counts, areaConfigs, bedAssignments e pets de cada estadia, todo dia,
+      // para nada. A linha inteira é buscada adiante, só para quem dispara.
       const { data: staysSnap } = await supabaseAdmin.from("stays")
-        .select("*")
+        .select("id, guestId, cabinId, status, checkIn, checkOut, automationFlags")
         .eq("propertyId", propertyId)
         .in("status", ["pending", "pre_checkin_done", "active"]);
 
@@ -138,9 +142,17 @@ export async function GET(request: Request) {
           const template = templates[rule.templateId];
 
           if (template) {
-            const { data: guestSnap } = await supabaseAdmin.from("guests").select("*").eq("propertyId", propertyId).eq("id", stay.guestId);
+            // A expansão de variáveis do template lê a estadia INTEIRA — a
+            // varredura acima é estreita de propósito, então a linha completa
+            // vem agora, em paralelo com o hóspede. Só para quem dispara.
+            const [guestRes, fullStayRes] = await Promise.all([
+              supabaseAdmin.from("guests").select("*").eq("propertyId", propertyId).eq("id", stay.guestId),
+              supabaseAdmin.from("stays").select("*").eq("id", stay.id).maybeSingle(),
+            ]);
+            const guestSnap = guestRes.data;
             if (!guestSnap || guestSnap.length === 0) continue;
             const guest = guestSnap[0] as any as Guest;
+            const stayFull = (fullStayRes.data as any as Stay) ?? stay;
 
             if (!guest.phone) continue;
 
@@ -169,7 +181,7 @@ export async function GET(request: Request) {
 
             try {
               await AutomationService.queueMessage(
-                propertyId, stay.id, guest.phone, template, triggerToFire as any, guest, cabin, stay, delayToApply, property, supabaseAdmin
+                propertyId, stay.id, guest.phone, template, triggerToFire as any, guest, cabin, stayFull, delayToApply, property, supabaseAdmin
               );
               queuedCount++;
             } catch (queueErr: any) {
@@ -180,7 +192,7 @@ export async function GET(request: Request) {
             if (triggerToFire === 'pre_checkin_48h') {
               console.log(`[Chatwoot] disparando 48h para stay=${stay.id} cabin=${cabin?.name ?? 'undefined'}`);
               if (cabin) {
-                ChatwootService.syncOn48hTrigger(stay, guest, cabin, property).catch(e =>
+                ChatwootService.syncOn48hTrigger(stayFull, guest, cabin, property).catch(e =>
                   console.error('[Chatwoot] syncOn48hTrigger error:', e)
                 );
               } else {
@@ -191,7 +203,7 @@ export async function GET(request: Request) {
             if (flagToUpdate) {
               await supabaseAdmin.from("stays").update({
                 automationFlags: {
-                  ...stay.automationFlags,
+                  ...stayFull.automationFlags,
                   [flagToUpdate]: false
                 }
               }).eq('id', stay.id);

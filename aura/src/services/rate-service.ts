@@ -834,18 +834,6 @@ export const RateService = {
 
   // ── Orçamentos salvos / funil de vendas ────────────────────────────────────
 
-  async listQuotes(propertyId: string): Promise<RateQuoteRecord[]> {
-    const admin = supabaseAdmin!;
-    const { data, error } = await admin
-      .from("rate_quotes")
-      .select("*")
-      .eq("propertyId", propertyId)
-      .order("createdAt", { ascending: false })
-      .limit(400);
-    if (error) throw new Error(error.message);
-    return (data || []) as RateQuoteRecord[];
-  },
-
   /** Dados de cálculo da propriedade (sem casamentos/canais — uso interno). */
   async getRateData(propertyId: string): Promise<{
     tables: RateTable[]; periods: RatePeriod[]; settings: RateSettings;
@@ -917,7 +905,15 @@ export const RateService = {
     // do cliente vem só a COMPOSIÇÃO pedida: quantas acomodações e o pax de
     // cada uma). Os controles comerciais (flutuação, descontos, extra) são do
     // orçamento inteiro e entram no cálculo de todas as acomodações.
-    const data = await this.getRateData(propertyId);
+    // As três leituras abaixo são independentes entre si (nenhuma usa o resultado
+    // da outra — `channels` só valida `source`, `existing` só alimenta a trava
+    // otimista). Esperar uma pela outra custava dois round-trips no caminho de
+    // escrita mais quente do comercial: todo Salvar e todo Copiar passam aqui.
+    const [data, channels, existing] = await Promise.all([
+      this.getRateData(propertyId),
+      CrmService.getChannels(propertyId),
+      payload.id ? this.getQuoteById(propertyId, payload.id) : Promise.resolve(null),
+    ]);
     // Modo Automática só vale com a migration aplicada; quando ativo, o pct
     // manual é zerado (um valor velho não pode vazar por baixo do auto).
     const fluctuationAuto = payload.fluctuationAuto === true && data.fluctuations !== null;
@@ -1052,11 +1048,8 @@ export const RateService = {
       : undefined;
 
     // Origem: aceita só slug conhecido da propriedade (ou null).
-    const channels = await CrmService.getChannels(propertyId);
     const source = payload.source && channels.some((c) => c.id === payload.source)
       ? payload.source : null;
-
-    const existing = payload.id ? await this.getQuoteById(propertyId, payload.id) : null;
 
     // Trava otimista: a tela declara em cima de QUAL versão editou. Vale para
     // qualquer escrita no meio — outro atendente, o drawer trocando preço, a
@@ -2066,11 +2059,12 @@ export const RateService = {
         .update({ status: "lost", lostReason: reason, lostAt: now, updatedAt: now })
         .in("id", rows.map((r) => r.id));
       if (error) throw new Error(error.message);
-      for (const r of rows) {
-        await CrmService.logInteraction(r.propertyId, "quote", r.id, "lost", {
-          actorId: "cron", actorName: "Sistema (Cron)", payload: { reason },
-        });
-      }
+      await CrmService.logInteractions(
+        rows.map((r) => ({
+          propertyId: r.propertyId, entityType: "quote" as const, entityId: r.id,
+          kind: "lost" as const, actorId: "cron", actorName: "Sistema (Cron)", payload: { reason },
+        })),
+      );
     };
 
     const { data: lapsed } = await admin

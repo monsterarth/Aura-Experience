@@ -1560,9 +1560,12 @@ export default function GovernantaPage() {
     setCabinHistory([]);
     setCabinHistoryLoading(true);
     try {
+      // Colunas explícitas: a folha do histórico mostra nove campos, mas o
+      // `select("*")` trazia junto o `checklist` (JSON de item por item) de 40
+      // tarefas — a mesma coluna que fez a rota antiga de tarefas pesar 779 kB.
       const { data } = await supabase
         .from("housekeeping_tasks")
-        .select("*")
+        .select("id, type, customLocation, status, assignedTo, createdAt, startedAt, finishedAt, observations")
         .eq("cabinId", cabin.id)
         .eq("propertyId", cabin.propertyId)
         .order("createdAt", { ascending: false })

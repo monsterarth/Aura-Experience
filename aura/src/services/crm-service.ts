@@ -36,6 +36,9 @@ export type ClientStayRow = {
 // Mappers entidade → CrmLead: o pipeline e o getLeadById usam OS MESMOS —
 // um lead aberto por deep-link não pode divergir do que o kanban mostra.
 
+const QUOTE_LEAD_COLUMNS = "id, clientName, clientPhone, clientEmail, clientInstagram, clientDocument, clientDocumentType, source, status, checkIn, followUpAt, expiresAt, lostReason, guestId, stayId, weddingId, negotiatedValue, acceptedAt, intakeAt, createdAt, snapshot, rooms, selectedCategory, finalValue";
+const WEDDING_LEAD_COLUMNS = "id, bride, groom, couplePhone, coupleEmail, weddingDate, status, source, contractTotal, followUpAt, expiresAt, lostReason, createdAt";
+
 function quoteToLead(q: RateQuoteRecord): CrmLead {
   const v = resolveQuoteValue(q);
   return {
@@ -125,6 +128,51 @@ export const CrmService = {
     }
   },
 
+  /**
+   * Várias interações de uma vez. Existe para o cron de arquivamento: quando um
+   * bloqueio de temporada vence, dezenas de orçamentos expiram na mesma manhã e
+   * cada um custava um INSERT em fila. Os orçamentos em si já eram atualizados
+   * em lote logo acima — isto alinha o registro ao mesmo padrão.
+   *
+   * Mantém a semântica do logInteraction: falha aqui NUNCA derruba quem chamou,
+   * porque o arquivamento já aconteceu e não pode ser desfeito por um log.
+   */
+  async logInteractions(
+    entries: {
+      propertyId: string;
+      entityType: CrmEntityType;
+      entityId: string;
+      kind: CrmInteractionKind;
+      note?: string | null;
+      payload?: Record<string, unknown>;
+      actorId?: string | null;
+      actorName?: string | null;
+    }[]
+  ): Promise<void> {
+    if (!entries.length) return;
+    const now = new Date().toISOString();
+    try {
+      // Formato idêntico em todas as linhas: insert em lote com formatos mistos
+      // manda NULL (não DEFAULT) nas chaves que faltam numa delas.
+      await supabaseAdmin.from("crm_interactions").insert(
+        entries.map((e) => ({
+          id: crypto.randomUUID(),
+          propertyId: e.propertyId,
+          entityType: e.entityType,
+          entityId: e.entityId,
+          kind: e.kind,
+          note: e.note ?? null,
+          payload: e.payload ?? {},
+          actorId: e.actorId ?? null,
+          actorName: e.actorName ?? null,
+          createdAt: now,
+        })),
+      );
+    } catch (e) {
+      console.error(`[CRM] Falha ao registrar ${entries.length} interação(ões) em lote:`, e);
+    }
+  },
+
   async getInteractions(
     propertyId: string,
     entityType: CrmEntityType,
@@ -203,15 +251,24 @@ export const CrmService = {
     const cutoff = new Date(Date.now() - 60 * 86400000).toISOString();
     const empty = Promise.resolve({ data: [] as unknown[] });
 
+// Colunas do funil — CASADAS COM OS MAPPERS abaixo (quoteToLead / weddingToLead)
+// e com resolveQuoteValue. Mexeu no mapper, mexa aqui: coluna esquecida não
+// quebra o build, some do cartão em silêncio.
+//
+// O `select("*")` daqui carregava 500 orçamentos INTEIROS a cada carga do hub
+// — e o funil recarrega depois de cada ação. Ficaram de fora `intake` (dados
+// dos acompanhantes e endereço) e `notes`, que nenhum cartão lê e são o grosso
+// do peso. `snapshot`/`rooms` continuam porque resolveQuoteValue precisa deles.
+
     const [quotesRes, weddingsRes, channels] = await Promise.all([
       funnel === "wedding" ? empty : supabaseAdmin
-        .from("rate_quotes").select("*")
+        .from("rate_quotes").select(QUOTE_LEAD_COLUMNS)
         .eq("propertyId", propertyId)
         .or(`status.in.(open,sent,negotiating),updatedAt.gte.${cutoff}`)
         .order("createdAt", { ascending: false })
         .limit(500),
       funnel === "quote" ? empty : supabaseAdmin
-        .from("weddings").select("*")
+        .from("weddings").select(WEDDING_LEAD_COLUMNS)
         .eq("propertyId", propertyId)
         .or(`status.in.(tentative,confirmed),updatedAt.gte.${cutoff}`)
         .order("weddingDate", { ascending: true })

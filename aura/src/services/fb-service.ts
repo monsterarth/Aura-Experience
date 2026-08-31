@@ -57,6 +57,25 @@ const mapOrder = (dbObj: any): FBOrder => ({
     updatedAt: dbObj.updated_at,
 });
 
+/**
+ * Reordenação em lote. Era um UPDATE por linha, sequencial, com o `error` de
+ * cada um ignorado: reordenar 30 itens custava 30 idas ao banco em fila, e uma
+ * falha no meio deixava a ordem metade aplicada sem ninguém saber.
+ *
+ * Paralelo em vez de `upsert`: upsert com linha parcial manda NULL nas colunas
+ * ausentes, e estas tabelas têm campos obrigatórios que não estão no payload.
+ */
+async function applyOrder(table: string, updates: { id: string; order: number }[]): Promise<void> {
+    if (!updates.length) return;
+    const results = await Promise.all(
+        updates.map((u) => supabase.from(table).update({ order: u.order }).eq('id', u.id)),
+    );
+    const failed = results.filter((r) => r.error);
+    if (failed.length) {
+        throw new Error(`Não foi possível reordenar ${failed.length} de ${updates.length} item(ns): ${failed[0].error!.message}`);
+    }
+}
+
 export const fbService = {
     // --- SETTINGS ---
     /**
@@ -153,11 +172,7 @@ export const fbService = {
     },
 
     async updateCategoryOrder(updates: { id: string, order: number }[]): Promise<void> {
-        // Since Supabase RPC is the standard way to do bulk updates, we can just do simple loops or 
-        // individual updates if the amount is small. We will do individual updates for simplicity.
-        for (const update of updates) {
-            await supabase.from('fb_categories').update({ order: update.order }).eq('id', update.id);
-        }
+        await applyOrder('fb_categories', updates);
     },
 
     // --- MENU ITEMS ---
@@ -235,9 +250,7 @@ export const fbService = {
     },
 
     async updateMenuItemOrder(updates: { id: string, order: number }[]): Promise<void> {
-        for (const update of updates) {
-            await supabase.from('fb_menu_items').update({ order: update.order }).eq('id', update.id);
-        }
+        await applyOrder('fb_menu_items', updates);
     },
 
     // --- ORDERS ---

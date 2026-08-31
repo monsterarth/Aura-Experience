@@ -37,8 +37,14 @@ export async function GET(req: NextRequest) {
       const quotes = await CrmService.listQuotesByClient(propertyId, { guestId, phone });
       return NextResponse.json({ quotes });
     }
-    const quotes = await RateService.listQuotes(propertyId);
-    return NextResponse.json({ quotes });
+    // Sem filtro, este branch devolvia 400 orçamentos INTEIROS (as mesmas
+    // colunas pesadas do funil). Nenhuma tela chama assim — todas passam `id=`,
+    // `guestId=` ou `phone=`. Em vez de deletar (pode haver script manual ou aba
+    // velha aberta), exige o filtro e diz qual.
+    return NextResponse.json(
+      { error: "Informe um filtro: id, guestId ou phone." },
+      { status: 400 },
+    );
   } catch (e) {
     console.error("Erro ao listar orçamentos:", e);
     return NextResponse.json({ error: "Falha ao carregar o funil." }, { status: 500 });
