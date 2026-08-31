@@ -45,7 +45,9 @@ function resolveVariables(body: string, guest: Guest, stay: Stay, cabin?: Cabin 
 
   const baseUrl = "https://aaura.app.br";
   text = text
-    .replace(/{{portal_link}}/g, `${baseUrl}/check-in`)
+    .replace(/{{portal_link}}/g, stay.accessCode
+      ? `${baseUrl}/check-in/login?code=${stay.accessCode}`
+      : `${baseUrl}/check-in/login`)
     .replace(/{{survey_link}}/g, `${baseUrl}/feedback/${stay.id}`);
 
   return text;

@@ -2,7 +2,7 @@
 
 Next.js route handlers (`route.ts`). Groups: `admin/`, `guest/` (public), `field/` (mobile),
 `director/`, `cron/`, `push/`, plus messaging integrations (`webhook/`, `chatwoot/`, `chat/`,
-`whatsapp/`), `ai/`, `upload/`, `media/`, `broadcast/`, `auth/`.
+`whatsapp/`), `ai/`, `upload/`, `auth/`.
 
 **Always validate the session server-side** (except intentionally public `guest/*` routes):
 

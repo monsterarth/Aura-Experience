@@ -31,6 +31,9 @@ yarn-error.log*
 .env*.local
 service-account.json
 
+# config local do Claude Code — chegou a ser rastreada carregando a chave da Evolution
+.claude/settings.local.json
+
 # vercel
 .vercel
 
@@ -45,6 +48,12 @@ tmp_*.txt
 temp_*.js
 schema_check.txt
 manual_api.txt
+# dumps de resposta de API salvos em debug (curl -o) e planilhas de trabalho
+/*.json
+!/package.json
+!/components.json
+!/tsconfig.json
+/*.xlsx
 
 # backups de migração (gerados por scripts/dev/*.mjs)
 /.backups/

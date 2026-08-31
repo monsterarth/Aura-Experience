@@ -102,7 +102,11 @@ export class AutomationService {
       const baseUrl = property?.settings?.customDomain
         ? `https://${property.settings.customDomain}`
         : `https://aaura.app.br`;
-      const portalLink = `${baseUrl}/check-in`;
+      // /check-in não tem página (404): o portal entra por /check-in/login, que aceita ?code=
+      // e já loga sozinho — mesmo formato do botão "copiar link" em /admin/stays.
+      const portalLink = stay.accessCode
+        ? `${baseUrl}/check-in/login?code=${stay.accessCode}`
+        : `${baseUrl}/check-in/login`;
       parsedText = parsedText.replace(/{{portal_link}}/g, portalLink);
       parsedText = parsedText.replace(/{{access_code}}/g, stay.accessCode);
 
