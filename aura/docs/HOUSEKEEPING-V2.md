@@ -61,6 +61,73 @@ recusada 9 em 10 vezes se denuncia sozinha.
 - As 6 regras viram sugestão, ou só as de alta recusa (`daily` e `inspection_checkin`)? Vistoria de
   check-in pode ser justamente a que não deve ser opcional.
 
+## A trava de duplicata — o achado que sustenta a direção
+
+Proposta do Arthur (01/09): **impedir criar tarefa igual enquanto já houver uma aberta**, ou
+sobrescrever a existente.
+
+**Medido, e é grande.** Agrupando as 631 tarefas do mês por `(tipo, local, dia)`:
+
+| | |
+|---|---|
+| Grupos com mais de uma tarefa idêntica | **123** |
+| Tarefas excedentes | **125 — 20 % de tudo que foi criado no mês** |
+| Duplicata **automática + à mão** | **106** |
+| Duplicata à mão + à mão | 18 |
+| Duplicata automática + automática | 1 |
+
+**Isso explica tudo o que estava solto.** As 351 tarefas manuais: boa parte é gente recriando o que o
+motor já tinha criado. Os cancelamentos humanos: é alguém matando uma das duas. E o motor
+duplicando-se a si mesmo é praticamente inexistente (1 caso) — os guards internos dele funcionam. **O
+buraco é entre as fontes, não dentro delas.**
+
+Exemplos reais: `daily` na mesma cabana em 01/08 → duas, **ambas `completed`** (a faxina foi
+registrada duas vezes); `inspection_checkin` em 20/08 → três, todas canceladas.
+
+### Onde a trava tem de morar
+
+Hoje **não existe ponto único de criação** — são 8 inserções diretas em `housekeeping_tasks`:
+6 no `housekeeping-rule-engine.ts` (uma por gatilho), 1 em `HousekeepingService.createTask`
+(caminho manual: admin + rotas de campo) e 1 em `stay-service.ts:713` (check-in). Qualquer trava
+precisa que os 8 passem pelo mesmo lugar, senão nasce furada.
+
+### Decisões de desenho
+
+**1. O que é "igual"** — chave `(propertyId, type, local)`, onde local é
+`cabinId ?? structureId ?? customLocation`. Foi essa chave que encontrou os 123 grupos. `stayId`
+fica **fora**: duas estadias no mesmo dia na mesma cabana geram tipos diferentes (`turnover` vs
+`daily`), então o tipo já separa.
+
+**2. O que é "aberta"** — `pending`, `in_progress`, `waiting_conference` e pausada. Concluída,
+cancelada e pulada não bloqueiam.
+
+**3. Bloquear ou mostrar** — *aqui a recomendação diverge do pedido, de propósito*:
+- **Motor: bloqueia em silêncio.** Máquina não deve insistir; se já há uma aberta, a regra não cria.
+- **Pessoa: NÃO bloquear — mostrar.** 106 das 125 duplicatas são pessoa colidindo com o motor, e a
+  causa provável é que **ela não viu a que já existia**. Bloquear sem mostrar não resolve isso: leva
+  a governanta a driblar (um `customLocation` levemente diferente e a trava passa a não ver nada).
+  O certo é interceptar e exibir: *"já existe uma faxina aberta nesta cabana, criada pelo sistema às
+  06:00, atribuída à Fulana"* → **[Abrir essa]** ou **[Criar assim mesmo]**. Isso resolve a maioria e
+  ensina sobre a minoria.
+
+**4. Sobrescrever** — só quando a existente ainda estiver **intocada** (`pending`, sem responsável e
+sem `startedAt`). Sobrescrever uma tarefa em andamento apagaria checklist preenchido e delegação já
+feita — o remédio viraria a doença.
+
+**5. Rede de segurança no banco** (fase 2) — índice único parcial em
+`(propertyId, type, coalesce(cabinId, structureId, customLocation))` restrito aos status abertos.
+Garante a regra mesmo se algum caminho novo escapar do service. Exige tratar o erro 23505 nos
+8 pontos, então não é o primeiro passo.
+
+### Ordem sugerida
+
+1. `findOpenDuplicate(propertyId, type, local)` no service, e os 8 pontos passando por ele.
+2. Motor: pular em silêncio quando houver aberta (e registrar que pulou, para medir).
+3. UI: o diálogo "já existe — abrir ou criar assim mesmo", com o motivo quando ela insiste.
+4. Medir de novo em 30 dias: as 125 excedentes têm de cair. **Se não caírem, a hipótese estava
+   errada** — e o motivo coletado no passo 3 dirá qual é a certa.
+5. Só então o índice único.
+
 ## Histórico de última limpeza — o dado já existe
 
 Pedido do Arthur: saber quando cada lugar foi limpo pela última vez, **inclusive as estruturas**.
