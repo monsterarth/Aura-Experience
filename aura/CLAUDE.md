@@ -203,6 +203,11 @@ Deeper docs live in `docs/`, read on demand:
   serve ao faturamento — não há emissão fiscal envolvida).
 - `docs/FISCAL.md` — plano da emissão fiscal própria (NFS-e + NFC-e via API terceirizada), o último
   pré-requisito para largar o HMAX. Não iniciado; traz as perguntas que dependem da contabilidade.
+- `docs/HOUSEKEEPING-V2.md` — estudo do motor de faxinas, com medição de produção (01/09/2026):
+  56% das tarefas são criadas à mão e **metade das automáticas de `daily`/vistoria é cancelada**.
+  Traz a ideia de o motor SUGERIR em vez de criar, o gatilho `fixed_interval_days` que nunca rodou
+  (cron `housekeeping-routines` sem chamador) e as 3 perguntas que dependem da governanta. **Não
+  religar aquele cron antes de decidir o modelo.**
 - `docs/REFACTORING.md` — plan for splitting the largest files (not yet executed).
 - `docs/CLEANUP.md` — escopo de faxina levantado em 29/08/2026 (61 achados verificados: código morto,
   dependências não usadas, duplicação, E/S redundante), organizado em ondas para uma sprint dedicada.
