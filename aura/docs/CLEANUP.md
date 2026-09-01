@@ -75,17 +75,24 @@ tela de camareira e de recepção e pedem verificação visual, não `pnpm build
 abertos. O `aura-kit-unconsumed-primitives` foi rebaixado na verificação (são blocos prescritos pela
 receita de página admin — agendados, não mortos) e fica como está.
 
-## ⛔ Pendência que bloqueia o fechamento da Onda 0
+## Rotação de segredos — 2 feitas e verificadas, 1 pendente (01/09/2026)
 
-O código saiu, mas **os segredos continuam válidos e recuperáveis no histórico do git**. Enquanto as
-rotações abaixo não acontecerem, a Onda 0 está *meio feita* — apagar o arquivo não invalida a chave:
+Apagar o arquivo não invalida a chave: o valor segue no histórico do git. Duas foram rotacionadas e
+confirmadas em produção; falta uma revogação e uma limpeza.
 
 | Segredo | Onde estava | Situação |
 |---|---|---|
-| `EVOLUTION_API_KEY` | `.claude/settings.local.json` (rastreado) | ✅ **rotacionada em 01/09** nos 3 lugares |
-| `CRON_SECRET` | `scripts/dev/test-cron.js` (rastreado) | ⛔ falta: Vercel **e cada job** do cron externo |
+| `EVOLUTION_API_KEY` | `.claude/settings.local.json` (rastreado) | ✅ **rotacionada 01/09** — envio real confirmado |
+| `CRON_SECRET` | `scripts/dev/test-cron.js` (rastreado) | ✅ **rotacionada 01/09** — os 2 jobs voltaram a 200 nos logs |
 | chave GCP `96bfe85d…` | `service-account.json` | ⛔ falta: revogar no console (projeto `aura-exp`) |
 | `WHATSAPP_API_KEY` | `whatsapp-service/server.js` (fallback no código) | ⚪ dispensada — o container não existe mais no Coolify (verificado 01/09); só apagar a env da Vercel |
+
+**Os crons externos são DOIS, não quatro** — descoberto pelos logs da Vercel: `process-messages`
+(`aura-experience-rho.vercel.app`, 2 min) e `hsystem-sync` (`aura.fazendadorosa.com.br`, 1 min),
+em **domínios diferentes**. `whatsapp-watchdog` e `housekeeping-routines` não são chamados por
+ninguém. Ficam no cron-job.org → job → aba **AVANÇADO** → **Cabeçalhos** → `Authorization`.
+**Trocar a env na Vercel não basta:** sem Redeploy o deployment no ar segue com a chave velha, e os
+jobs tomam 401 durante o build (~4 min) — some sozinho.
 
 **Rotacionar a chave da Evolution** tem uma armadilha que custa tempo: ela **não fica no Manager**
 (lá só há config por instância). É env do container no Coolify, e existem duas variáveis parecidas —
