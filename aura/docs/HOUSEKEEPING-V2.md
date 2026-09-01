@@ -8,22 +8,40 @@
 A pergunta que abriu o estudo foi do Arthur: *"as governantas estão delegando em cima das tarefas
 criadas automaticamente ou estão criando à mão?"* — medida em produção, não estimada.
 
-**Um mês (01/08 a 01/09/2026), 631 tarefas em `housekeeping_tasks`:**
+**Um mês (01/08 a 01/09/2026), 631 tarefas em `housekeeping_tasks`.**
 
-| | Criadas | Canceladas | Taxa |
-|---|---|---|---|
-| Automáticas (têm `ruleId`) | 280 | 105 | **37 %** |
-| — só `daily` (diária de estadia ativa) | 92 | 48 | **52 %** |
-| — só `inspection_checkin` (vistoria) | 74 | 37 | **50 %** |
-| À mão (sem `ruleId`) | **351 (56 % do total)** | 92 | 26 % |
+> ⚠️ **Correção de 01/09, mesma tarde.** A primeira leitura destes números foi **errada** e chegou a
+> ser commitada: eu contei todo `status='cancelled'` como rejeição humana e concluí que "metade das
+> automáticas é cancelada, o motor erra o dobro de um humano". **Não é.** A maior parte daqueles
+> cancelamentos é o próprio sistema encerrando tarefa que ficou obsoleta — e isso é o desenho
+> funcionando, não falhando. O que segue já está reclassificado.
 
-**Duas leituras, e as duas incomodam:**
+**Dois cancelamentos automáticos, ambos corretos, que inflavam a conta:**
+- `/api/admin/stays/[id]` no check-out cancela a `daily` pendente da cabana e a substitui pela
+  faxina de saída (`observations: "Cancelada automaticamente por Check-out"`) — **37 casos**.
+- `closeObsoleteCheckinInspections` encerra a vistoria de check-in que perdeu a validade
+  ("check-in já realizado", "Pular Faxina" pela recepção) — **37 casos**.
 
-1. **A governança cria mais tarefa à mão do que o motor inteiro** (351 × 280). O motor não é o
-   caminho principal; é um ruído que se contorna.
-2. **Metade das automáticas de `daily` e de vistoria é cancelada**, contra 26 % das manuais. O motor
-   erra com o dobro da frequência de um humano — e não tem como saber, porque criar e ser cancelado
-   não é sinal que volte para lugar nenhum.
+**O quadro real, separando sistema de gente:**
+
+| | Criadas | Canceladas pelo sistema | Canceladas por gente | **Rejeição humana** |
+|---|---|---|---|---|
+| Automáticas (têm `ruleId`) | 280 | 74 | 31 | **11 %** |
+| À mão (sem `ruleId`) | 351 | 28 | 64 | **18 %** |
+
+**A conclusão se inverteu: o motor NÃO está sendo rejeitado.** As pessoas descartam tarefa
+automática *menos* (11 %) do que descartam a que elas mesmas criaram (18 %). As regras que pareciam
+piores — `daily` (52 % bruto) e `inspection_checkin` (50 % bruto) — caem para **12 %** e
+**praticamente zero** de rejeição humana quando se tira o encerramento automático.
+
+**O que continua de pé, e é o fato interessante:** **56 % das tarefas são criadas à mão** (351 contra
+280). Isso não é contorno do motor — é volume de trabalho avulso que nenhuma regra cobre. A pergunta
+deixa de ser "por que rejeitam o motor" e passa a ser **"o que são essas 351, e alguma regra as
+cobriria?"**.
+
+**Quem cancela** (98 cancelamentos com autor na auditoria, desde 01/08): **Sandra 65**, Arthur 28,
+Rosi 3, Grazi 2. Das 64 tarefas que a Sandra cancelou, **41 eram criadas à mão** — a maior fatia,
+22, do tipo `custom`. Ou seja: o churn está no fluxo manual, não no motor.
 
 ## Como o motor funciona hoje
 
@@ -47,19 +65,16 @@ segue aparecendo na tela de configuração como se funcionasse.
 ## A ideia na mesa: sugestão em vez de criação
 
 Proposta do Arthur: o motor **propõe** e alguém aceita ou recusa, em vez de criar a tarefa direto.
-O dado sustenta: metade do que ele cria é descartado, então hoje ele já produz "sugestões" — só que
-com o custo de poluir a lista de trabalho de quem opera e exigir um cancelamento explícito.
 
-**O que a mudança compra, além de menos ruído:** uma taxa de aceite. Hoje o motor não tem como saber
-que erra; com aceite/recusa, a própria operação vira o termômetro de cada regra — e a regra que é
-recusada 9 em 10 vezes se denuncia sozinha.
+**Sendo honesto: o dado NÃO sustenta isso como conserto de um problema.** Com 11 % de rejeição
+humana, o motor acerta quase sempre — trocar criação por sugestão adicionaria um passo de aceite a
+~250 tarefas por mês para filtrar ~31. O custo operacional é maior que o ganho.
 
-**O que precisa ser decidido no desenho** (não decidir aqui, decidir com a governanta):
-- A sugestão tem prazo? Sugestão não respondida some, vira tarefa, ou fica acumulando?
-- Quem aceita — só governança, ou a própria camareira?
-- Recusar pede motivo? Sem motivo não há aprendizado; com motivo, há atrito.
-- As 6 regras viram sugestão, ou só as de alta recusa (`daily` e `inspection_checkin`)? Vistoria de
-  check-in pode ser justamente a que não deve ser opcional.
+**Onde a ideia continua fazendo sentido:** como **instrumentação**, não como filtro. Hoje o motor não
+tem métrica própria — foi preciso escavar auditoria e texto de observação para descobrir que ele vai
+bem. Um campo simples de "por que cancelou" no ato do cancelamento resolveria isso com uma fração do
+atrito, e serviria tanto para tarefa automática quanto manual. Vale considerar isso antes de mexer
+no fluxo de criação.
 
 ## Histórico de última limpeza — o dado já existe
 
