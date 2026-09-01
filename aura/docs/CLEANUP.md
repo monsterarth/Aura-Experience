@@ -80,12 +80,21 @@ receita de página admin — agendados, não mortos) e fica como está.
 O código saiu, mas **os segredos continuam válidos e recuperáveis no histórico do git**. Enquanto as
 rotações abaixo não acontecerem, a Onda 0 está *meio feita* — apagar o arquivo não invalida a chave:
 
-| Segredo | Onde estava | Ação |
+| Segredo | Onde estava | Situação |
 |---|---|---|
-| `CRON_SECRET` | `scripts/dev/test-cron.js` (rastreado) | rotacionar na Vercel **e** no cron externo |
-| `WHATSAPP_API_KEY` | `whatsapp-service/server.js` (fallback no código) | rotacionar se o container existir em algum lugar |
-| chave GCP `96bfe85d…` | `service-account.json` | revogar no console GCP (projeto `aura-exp`) |
-| `EVOLUTION_API_KEY` | `.claude/settings.local.json` (rastreado) | rotacionar — era a chave **atual** de produção |
+| `EVOLUTION_API_KEY` | `.claude/settings.local.json` (rastreado) | ✅ **rotacionada em 01/09** nos 3 lugares |
+| `CRON_SECRET` | `scripts/dev/test-cron.js` (rastreado) | ⛔ falta: Vercel **e cada job** do cron externo |
+| chave GCP `96bfe85d…` | `service-account.json` | ⛔ falta: revogar no console (projeto `aura-exp`) |
+| `WHATSAPP_API_KEY` | `whatsapp-service/server.js` (fallback no código) | ⚪ dispensada — o container não existe mais no Coolify (verificado 01/09); só apagar a env da Vercel |
+
+**Rotacionar a chave da Evolution** tem uma armadilha que custa tempo: ela **não fica no Manager**
+(lá só há config por instância). É env do container no Coolify, e existem duas variáveis parecidas —
+o compose faz `AUTHENTICATION_API_KEY=${SERVICE_PASSWORD_AUTHENTICATIONAPIKEY}`, então a primeira é
+derivada e volta ao valor antigo no próximo deploy. Edite a **`SERVICE_PASSWORD_AUTHENTICATIONAPIKEY`**.
+Depois: env na Vercel + Redeploy (é ela que valida o webhook de entrada), e o cofre em
+`/admin/configuracoes/integracoes` — campo em branco **mantém** o atual. O cofre tem prioridade sobre a
+env, mas é cacheado 60 s por lambda quente: sem um deploy novo, a instância antiga segue servindo a
+chave velha.
 
 ## O que foi executado nesta sprint
 
