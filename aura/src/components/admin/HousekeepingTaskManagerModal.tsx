@@ -7,6 +7,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { X, Save, Trash2, Edit3, MessageSquare, Plus, UserPlus } from "lucide-react";
 import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
 import { HousekeepingService } from "@/services/housekeeping-service";
+import { isDuplicateTaskError, type OpenDuplicate } from "@/lib/housekeeping-duplicates";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,23 @@ interface TaskManagerModalProps {
 }
 
 type LocalType = 'cabin' | 'structure' | 'custom';
+
+/** Descreve a tarefa que colidiu, para a pessoa decidir com o que ela precisa saber. */
+function describeDuplicate(dup: OpenDuplicate, maids: Staff[]): string {
+  const STATUS: Record<string, string> = {
+    pending: "aguardando", in_progress: "em andamento", waiting_conference: "aguardando conferência",
+    paused: "pausada", awaiting_checkout: "esperando o check-out",
+  };
+  const quando = new Date(dup.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const nomes = (dup.assignedTo ?? [])
+    .map((id) => maids.find((m) => m.id === id)?.fullName)
+    .filter(Boolean);
+
+  const origem = dup.ruleId ? "criada automaticamente" : "criada à mão";
+  const responsavel = nomes.length ? ` com ${nomes.join(", ")}` : " sem responsável ainda";
+  return `Uma tarefa deste tipo neste local está ${STATUS[dup.status] ?? dup.status}${responsavel}` +
+    ` — ${origem} em ${quando}. Criar outra deixa as duas na lista.`;
+}
 
 export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task, cabins, structures, maids }: TaskManagerModalProps) {
   const { userData } = useAuth();
@@ -132,7 +150,27 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
         await HousekeepingService.updateTask(propertyId, task.id, payload, userData?.id || "admin", userData?.fullName || "Admin");
         toast.success("Tarefa atualizada com sucesso!");
       } else {
-        await HousekeepingService.createTask(propertyId, { ...payload, checklist: formData.type === 'custom' ? customChecklist : [] }, userData?.id || "admin", userData?.fullName || "Admin");
+        const createPayload = { ...payload, checklist: formData.type === 'custom' ? customChecklist : [] };
+        const actor = userData?.id || "admin";
+        const actorName = userData?.fullName || "Admin";
+        try {
+          await HousekeepingService.createTask(propertyId, createPayload, actor, actorName);
+        } catch (e) {
+          if (!isDuplicateTaskError(e)) throw e;
+          // NÃO bloquear: mostrar o que já existe e deixar a decisão com ela. Criar
+          // por cima de uma tarefa aberta era 20% do volume do mês, e a causa
+          // provável é justamente não enxergar a que já estava lá.
+          setLoading(false);
+          const seguir = await confirm({
+            title: "Já existe uma tarefa aberta aqui",
+            description: describeDuplicate(e.duplicate, maids),
+            confirmLabel: "Criar assim mesmo",
+            cancelLabel: "Deixar como está",
+          });
+          if (!seguir) return;
+          setLoading(true);
+          await HousekeepingService.createTask(propertyId, createPayload, actor, actorName, { force: true });
+        }
         toast.success("Nova tarefa criada!");
       }
       onClose();

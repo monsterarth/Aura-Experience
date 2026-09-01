@@ -4,6 +4,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { HousekeepingRule } from "@/types/aura";
 import { v4 as uuidv4 } from "uuid";
+import { findOpenDuplicate } from "@/lib/housekeeping-duplicates";
 
 async function getGovEndTime(propertyId: string): Promise<string> {
   const { data } = await supabaseAdmin
@@ -42,6 +43,36 @@ function buildTaskPayload(rule: HousekeepingRule, overrides: Record<string, any>
   };
 }
 
+/**
+ * Cria a tarefa da regra — A MENOS que já exista uma ABERTA do mesmo tipo no mesmo lugar.
+ *
+ * Os guards que já existiam aqui checavam por `ruleId` ("eu já criei esta hoje"), o que é
+ * cego ao que a governanta criou à mão. Foi assim que 106 duplicatas em um mês nasceram:
+ * o motor e a pessoa criando a mesma tarefa sem enxergar um ao outro.
+ *
+ * Máquina que encontra duplicata desiste em silêncio — quem insiste é gente, e para gente
+ * a decisão é dela (ver a política em @/lib/housekeeping-duplicates).
+ */
+async function insertUnlessOpen(rule: HousekeepingRule, overrides: Record<string, any>) {
+  const payload = buildTaskPayload(rule, overrides) as Record<string, any>;
+  const dup = await findOpenDuplicate(supabaseAdmin, payload.propertyId, payload.type, {
+    cabinId: payload.cabinId ?? null,
+    structureId: payload.structureId ?? null,
+    customLocation: payload.customLocation ?? null,
+  });
+
+  if (dup) {
+    console.log(
+      `[ENGINE] regra ${rule.id} (${payload.type}) pulou: ja existe aberta ${dup.id} ` +
+      `(${dup.ruleId ? 'do motor' : 'criada a mao'}, status ${dup.status})`
+    );
+    return { skipped: true as const, error: null };
+  }
+
+  const { error } = await supabaseAdmin.from('housekeeping_tasks').insert(payload);
+  return { skipped: false as const, error };
+}
+
 // Chamado pelo stay-service no checkout. Cria as tarefas conforme regras 'on_checkout'.
 // Se já existir uma pré-faxina 'awaiting_checkout' para esta estadia (gerada pelo cron),
 // transiciona ela para 'pending' em vez de criar duplicata.
@@ -71,9 +102,7 @@ export async function applyOnCheckout(
   // Nenhuma pré-faxina encontrada — criar normalmente (checkout no mesmo dia)
   const rules = await getActiveRules(propertyId, 'on_checkout');
   for (const rule of rules) {
-    await supabaseAdmin.from('housekeeping_tasks').insert(
-      buildTaskPayload(rule, { cabinId, stayId, keyLocation })
-    );
+    await insertUnlessOpen(rule, { cabinId, stayId, keyLocation });
   }
 }
 
@@ -139,10 +168,8 @@ export async function applyDailyRules(
 
     if (existingToday) continue;
 
-    await supabaseAdmin.from('housekeeping_tasks').insert(
-      buildTaskPayload(rule, { cabinId: stay.cabinId, stayId: stay.id })
-    );
-    console.log(`[ENGINE] Estadia ${stay.id}: linen_change criada por stay_duration_days (ruleId: ${rule.id})`);
+    const r = await insertUnlessOpen(rule, { cabinId: stay.cabinId, stayId: stay.id });
+    if (!r.skipped) console.log(`[ENGINE] Estadia ${stay.id}: linen_change criada por stay_duration_days (ruleId: ${rule.id})`);
     } catch (err: any) {
       console.error(`[ENGINE] ❌ Erro em stay_duration_days para estadia ${stay.id}:`, err?.message ?? err);
     }
@@ -209,17 +236,17 @@ export async function applyDailyRules(
       }
     }
 
-    const { error: insertErr } = await supabaseAdmin.from('housekeeping_tasks').insert(
-      buildTaskPayload(rule, {
-        cabinId: stay.cabinId,
-        stayId: stay.id,
-        status: taskStatus,
-        paused_until: pausedUntil,
-        ...(skippedAt ? { skippedAt } : {}),
-        ...(guestName ? { guestName } : {}),
-      })
-    );
-    if (insertErr) {
+    const { skipped, error: insertErr } = await insertUnlessOpen(rule, {
+      cabinId: stay.cabinId,
+      stayId: stay.id,
+      status: taskStatus,
+      paused_until: pausedUntil,
+      ...(skippedAt ? { skippedAt } : {}),
+      ...(guestName ? { guestName } : {}),
+    });
+    if (skipped) {
+      // nada a fazer: ja ha uma diaria aberta nesta cabana
+    } else if (insertErr) {
       console.error(`[ENGINE] ❌ Erro ao inserir active_stay_daily para estadia ${stay.id}:`, insertErr.message);
     } else {
       console.log(`[ENGINE] ✅ active_stay_daily criada para estadia ${stay.id} (status: ${taskStatus})`);
@@ -288,10 +315,8 @@ export async function applyCheckinDayRules(propertyId: string, targetDate?: Date
 
       if (openInspection) continue;
 
-      await supabaseAdmin.from('housekeeping_tasks').insert(
-        buildTaskPayload(rule, { cabinId: stay.cabinId, stayId: stay.id })
-      );
-      created++;
+      const r = await insertUnlessOpen(rule, { cabinId: stay.cabinId, stayId: stay.id });
+      if (!r.skipped) created++;
     }
   }
 
@@ -342,13 +367,12 @@ export async function applyCheckoutDayRules(propertyId: string, targetDate?: Dat
 
       if (existing) continue;
 
-      await supabaseAdmin.from('housekeeping_tasks').insert(
-        buildTaskPayload(rule, {
+      await insertUnlessOpen(rule, {
           cabinId: stay.cabinId,
           stayId: stay.id,
           status: 'awaiting_checkout',
           keyLocation: 'unknown',
-        })
+        }
       );
       created++;
     }
@@ -387,12 +411,11 @@ export async function applyFixedIntervalRules(propertyId: string) {
     if (existing) continue;
 
     const now = new Date().toISOString();
-    await supabaseAdmin.from('housekeeping_tasks').insert(
-      buildTaskPayload(rule, {
+    await insertUnlessOpen(rule, {
         cabinId: rule.cabinId || null,
         structureId: rule.structureId || null,
         customLocation: rule.customLocation || null,
-      })
+      }
     );
 
     await supabaseAdmin

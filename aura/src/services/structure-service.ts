@@ -556,17 +556,24 @@ export const StructureService = {
 
         if (status === 'completed' && requiresTurnover && structureId) {
             const { HousekeepingService } = await import('./housekeeping-service');
-            await HousekeepingService.createTask(
-                propertyId,
-                {
-                    structureId,
-                    stayId: bookingId,
-                    type: 'turnover',
-                    status: 'pending',
-                } as any,
-                actorId,
-                actorName
-            );
+            const { isDuplicateTaskError } = await import('@/lib/housekeeping-duplicates');
+            try {
+                await HousekeepingService.createTask(
+                    propertyId,
+                    {
+                        structureId,
+                        stayId: bookingId,
+                        type: 'turnover',
+                        status: 'pending',
+                    } as any,
+                    actorId,
+                    actorName
+                );
+            } catch (e) {
+                // Caminho de MAQUINA: se ja ha turnover aberto nesta estrutura, desiste calado.
+                if (!isDuplicateTaskError(e)) throw e;
+                console.log(`[estruturas] turnover nao criado: ja existe aberto na estrutura ${structureId}`);
+            }
         }
     }
 };

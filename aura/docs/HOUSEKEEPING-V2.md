@@ -134,14 +134,41 @@ feita — o remédio viraria a doença.
 Garante a regra mesmo se algum caminho novo escapar do service. Exige tratar o erro 23505 nos
 8 pontos, então não é o primeiro passo.
 
-### Ordem sugerida
+### O que foi implementado (01/09/2026)
 
-1. `findOpenDuplicate(propertyId, type, local)` no service, e os 8 pontos passando por ele.
-2. Motor: pular em silêncio quando houver aberta (e registrar que pulou, para medir).
-3. UI: o diálogo "já existe — abrir ou criar assim mesmo", com o motivo quando ela insiste.
-4. Medir de novo em 30 dias: as 125 excedentes têm de cair. **Se não caírem, a hipótese estava
-   errada** — e o motivo coletado no passo 3 dirá qual é a certa.
-5. Só então o índice único.
+Passos 1 a 3 feitos; falta medir e, depois, o índice.
+
+- **`src/lib/housekeeping-duplicates.ts`** — `findOpenDuplicate()`, a lista de status abertos e o
+  `DuplicateTaskError`. Fica em `lib` porque o motor e o service são os dois consumidores e um
+  importar o outro criaria ciclo. Falha de consulta **não** bloqueia a criação: melhor uma duplicata
+  do que uma faxina que não existe porque o banco piscou.
+- **Motor** — os 6 inserts passaram a usar `insertUnlessOpen()`, que checa por **tipo + local +
+  status aberto**. Os guards que existiam antes checavam por `ruleId` ("eu já criei esta hoje"),
+  cegos ao que a pessoa criou — era exatamente essa cegueira que produzia as 106. Quando pula,
+  registra no log **por quê** e se a existente era do motor ou da mão.
+- **`HousekeepingService.createTask`** — levanta `DuplicateTaskError` com a tarefa que colidiu, a
+  menos que receba `force: true`. Falha alto de propósito: um retorno especial seria ignorado por
+  chamador desatento e a duplicata voltaria calada. Criação forçada fica marcada na auditoria com
+  texto próprio ("mesmo havendo uma aberta").
+- **Máquina** (`structure-service`, turnover de estrutura) — engole o erro e segue.
+- **Pessoa** — o modal do admin mostra um diálogo dizendo **o que já existe** (status, quem é o
+  responsável, quando foi criada, se veio do motor ou da mão) com *Criar assim mesmo* / *Deixar como
+  está*; a rota de campo devolve **409 com a tarefa que colidiu** e a governanta mostra o mesmo
+  aviso antes de reenviar com `force`.
+- **`postFieldAction`** passou a devolver o corpo da resposta **também no erro** — sem isso o 409
+  chegava sem o duplicado dentro.
+
+**Verificado contra produção** (não só `pnpm build`, que aqui é quase cego): a consulta foi simulada
+sobre uma tarefa aberta real e encontrou a colisão, com todas as colunas de volta. Um nome de coluna
+errado teria transformado a trava num no-op silencioso.
+
+**Ainda em aberto:**
+- **Medir em 30 dias.** As 125 excedentes têm de cair. **Se não caírem, a hipótese estava errada** —
+  e o motivo de quem insistiu (visível na auditoria pelo texto próprio) dirá qual é a certa.
+- **[Abrir essa]** — hoje a saída é *Deixar como está* e a tarefa existente aparece na lista. Um
+  atalho que abre a tarefa que colidiu exige navegação a partir do modal; fica para depois.
+- **Índice único parcial** no banco, como rede de segurança — exige tratar o erro 23505 nos pontos
+  de escrita, então não é o primeiro passo.
 
 ## Histórico de última limpeza — o dado já existe
 
