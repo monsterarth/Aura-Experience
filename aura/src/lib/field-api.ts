@@ -25,7 +25,9 @@ export async function postFieldAction(
     });
     const data = await res.json().catch(() => null);
     if (res.ok) return { ok: true, data };
-    return { ok: false, error: typeof data?.error === 'string' ? data.error : undefined };
+    // `data` volta TAMBEM no erro: rotas que respondem 409 mandam contexto no corpo
+    // (ex.: a tarefa aberta que colidiu), e sem isso ele se perderia aqui.
+    return { ok: false, error: typeof data?.error === 'string' ? data.error : undefined, data };
   } catch {
     return { ok: false };
   } finally {

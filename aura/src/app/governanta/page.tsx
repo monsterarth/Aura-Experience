@@ -984,27 +984,39 @@ function NewTaskSheet({
     try {
       // Via rota de campo (server-side): createTask escrevia pelo client do browser e pendurava
       // no lock frio — spinner infinito ao criar faxina manual (estrutura). A rota usa service-role.
-      const res = await fetch('/api/field/housekeeping-tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'create',
-          propertyId,
-          task: {
-            type: taskType,
-            status: "pending",
-            cabinId: locType === "cabin" ? cabinId : undefined,
-            structureId: locType === "structure" ? structureId : undefined,
-            customLocation: locType === "custom" ? customLocation.trim() : undefined,
-            assignedTo: assignedIds,
-            observations: obs || undefined,
-            checklist: taskType === "custom" ? customChecklist : [],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-        }),
-      });
-      if (!res.ok) throw new Error('create_failed');
+      const task = {
+        type: taskType,
+        status: "pending",
+        cabinId: locType === "cabin" ? cabinId : undefined,
+        structureId: locType === "structure" ? structureId : undefined,
+        customLocation: locType === "custom" ? customLocation.trim() : undefined,
+        assignedTo: assignedIds,
+        observations: obs || undefined,
+        checklist: taskType === "custom" ? customChecklist : [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      let r = await postFieldAction('/api/field/housekeeping-tasks', { action: 'create', propertyId, task });
+
+      // 409 = já existe uma tarefa aberta igual. Não bloqueia: mostra a que está lá
+      // e deixa a decisão com quem está olhando a operação.
+      if (!r.ok && r.data?.duplicate) {
+        const d = r.data.duplicate;
+        const quando = new Date(d.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+        const origem = d.ruleId ? "criada automaticamente" : "criada à mão";
+        setBusy(false);
+        if (!window.confirm(
+          `Já existe uma tarefa deste tipo neste local (${origem} em ${quando}). ` +
+          `Criar outra deixa as duas na lista.
+
+Criar assim mesmo?`
+        )) return;
+        setBusy(true);
+        r = await postFieldAction('/api/field/housekeeping-tasks', { action: 'create', propertyId, task, force: true });
+      }
+
+      if (!r.ok) throw new Error('create_failed');
       showToast("Tarefa criada!", T.green);
       onCreated();
       onClose();

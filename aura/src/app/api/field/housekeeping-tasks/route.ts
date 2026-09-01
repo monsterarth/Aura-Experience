@@ -9,6 +9,7 @@ import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { HousekeepingService } from '@/services/housekeeping-service';
 import { notifyHousekeepingAssigned, notifyHousekeepingConference } from '@/lib/push-notify';
+import { isDuplicateTaskError } from '@/lib/housekeeping-duplicates';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,7 +93,7 @@ export async function POST(req: Request) {
   const auth = await requireAuth(['maid', 'governance', 'super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
-  let body: { action?: TaskAction; taskId?: string; checklist?: unknown[]; observations?: string; maidIds?: string[]; task?: Record<string, any>; propertyId?: string };
+  let body: { action?: TaskAction; taskId?: string; checklist?: unknown[]; observations?: string; maidIds?: string[]; task?: Record<string, any>; propertyId?: string; force?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -116,13 +117,21 @@ export async function POST(req: Request) {
     }
     const taskData: Record<string, any> = body.task ?? {};
     try {
-      const newId = await HousekeepingService.createTask(createPropertyId, taskData as any, actorId, actorName);
+      const newId = await HousekeepingService.createTask(
+        createPropertyId, taskData as any, actorId, actorName,
+        { force: body.force === true },
+      );
       if (Array.isArray(taskData.assignedTo) && taskData.assignedTo.length > 0) {
         try { await notifyHousekeepingAssigned(newId); }
         catch (e) { console.error('[field/housekeeping-tasks POST create] push:', e); }
       }
       return NextResponse.json({ ok: true, id: newId });
     } catch (e: any) {
+      // 409 com a tarefa que colidiu: o app mostra e a pessoa decide abrir aquela
+      // ou reenviar com force. Nao e erro — e informacao que faltava na tela dela.
+      if (isDuplicateTaskError(e)) {
+        return NextResponse.json({ error: e.message, duplicate: e.duplicate }, { status: 409 });
+      }
       console.error('[field/housekeeping-tasks POST create]', e?.message ?? e);
       return NextResponse.json({ error: 'Erro ao criar a tarefa.' }, { status: 500 });
     }

@@ -7,6 +7,7 @@ import { HousekeepingTask, HousekeepingRule } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { triggerTaskPush } from "@/lib/push-trigger";
+import { findOpenDuplicate, DuplicateTaskError } from "@/lib/housekeeping-duplicates";
 
 // ─── Log helpers ─────────────────────────────────────────────────────────────
 
@@ -261,7 +262,27 @@ export const HousekeepingService = {
     };
   },
 
-  async createTask(propertyId: string, data: Partial<HousekeepingTask>, actorId: string, actorName: string) {
+  /**
+   * `opts.force` cria mesmo havendo uma aberta igual — reservado para quando a
+   * PESSOA viu a existente e decidiu criar assim mesmo. Sem force, levanta
+   * DuplicateTaskError com a tarefa que colidiu, para a tela poder mostrá-la.
+   */
+  async createTask(
+    propertyId: string,
+    data: Partial<HousekeepingTask>,
+    actorId: string,
+    actorName: string,
+    opts: { force?: boolean } = {},
+  ) {
+    if (!opts.force) {
+      const dup = await findOpenDuplicate(db(), propertyId, data.type || '', {
+        cabinId: data.cabinId,
+        structureId: data.structureId,
+        customLocation: data.customLocation,
+      });
+      if (dup) throw new DuplicateTaskError(dup);
+    }
+
     const taskId = uuidv4();
     const payload = {
       ...data,
@@ -279,7 +300,9 @@ export const HousekeepingService = {
     const typeLabel = TASK_TYPE_LABELS[data.type || ''] || data.type || 'limpeza';
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "CREATE", entity: "CABIN", entityId: taskId,
-      details: `Criou tarefa (${typeLabel}): ${location}.`
+      details: opts.force
+        ? `Criou tarefa (${typeLabel}) mesmo havendo uma aberta: ${location}.`
+        : `Criou tarefa (${typeLabel}): ${location}.`
     });
 
     // Push para camareiras já atribuídas na criação (criação manual no admin).
