@@ -18,7 +18,6 @@ import { toast } from "sonner";
 import { Clock, LogIn, LogOut, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
-import { isModuleOn } from "@/lib/modules";
 import { T } from "@/lib/admin-tokens";
 import { clockStatus, formatMinutes, localHM, nextPunchKind } from "@/lib/timeclock";
 import type { TimeClockEvent } from "@/types/aura";
@@ -59,9 +58,12 @@ export function TimeClockButton() {
   const [saving, setSaving] = useState(false);
   const [now, setNow] = useState(() => new Date());
 
-  const moduleOn = isModuleOn(currentProperty?.settings, "ponto");
+  // Quem manda aqui é a PESSOA, não a propriedade aberta na tela. `timeSource`
+  // só pode ser ligado com o módulo ativo, e o super_admin troca de pousada no
+  // seletor o tempo todo — amarrar o botão à propriedade atual fazia o ponto
+  // dele sumir só por estar olhando outra casa.
   const tracked = (userData?.timeSource ?? "none") === "aura";
-  const active = moduleOn && tracked;
+  const active = tracked;
 
   const load = useCallback(async () => {
     const to = new Date();

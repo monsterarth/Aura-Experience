@@ -118,7 +118,10 @@ function PontoInner() {
     }
   };
 
-  if (!moduleOn) {
+  // O aviso de módulo desligado é para quem não tem nada a ver com ponto. Quem
+  // registra (ou administra) chega aqui pelo próprio cadastro, mesmo com outra
+  // pousada selecionada no topo.
+  if (!moduleOn && !tracksOwn && !ponto.canManage) {
     return (
       <PageShell>
         <PageHeader title="Ponto" icon={Clock} />
