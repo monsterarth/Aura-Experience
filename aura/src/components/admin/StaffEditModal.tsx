@@ -44,6 +44,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
   // A placa só serve à Guarita. Sem o módulo, o campo é ruído no cadastro —
   // some da tela, mas o que já foi digitado continua no banco.
   const hasGuarita = isModuleOn(currentProperty?.settings, "guarita");
+  const hasTimeclock = isModuleOn(currentProperty?.settings, "ponto");
   const [tab, setTab] = useState<Tab>("profile");
 
   // --- Profile tab ---
@@ -95,6 +96,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
       bio: staff.bio || "",
       profilePictureUrl: staff.profilePictureUrl || "",
       vehiclePlate: staff.vehiclePlate || "",
+      timeSource: staff.timeSource ?? "none",
     });
   }, [staff]);
 
@@ -301,6 +303,32 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
                       </div>
                     )}
                   </div>
+
+                  {/* Ponto — três estados exclusivos, e não um "liga/desliga" com
+                      a origem pendurada ao lado: ou a pessoa bate no Aura, ou bate
+                      no relógio, ou não bate. É o que impede duas contagens de
+                      horas concorrentes para a mesma pessoa. */}
+                  {hasTimeclock && !isSelf && (
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold uppercase text-muted-foreground">Bate ponto</label>
+                      <select
+                        value={formData.timeSource ?? "none"}
+                        onChange={e => setFormData(prev => ({ ...prev, timeSource: e.target.value as Staff["timeSource"] }))}
+                        className="w-full p-2.5 bg-background border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                      >
+                        <option value="none">Não registra ponto</option>
+                        <option value="aura">Sim — bate no Aura</option>
+                        <option value="rep">Sim — bate no relógio (importado)</option>
+                      </select>
+                      <p className="text-[11px] text-muted-foreground">
+                        {formData.timeSource === "aura"
+                          ? "Um botão de entrada/saída aparece no topo do sistema para esta pessoa."
+                          : formData.timeSource === "rep"
+                            ? "As batidas chegam pela importação do relógio — o botão no sistema fica indisponível."
+                            : "Nenhum registro de jornada para esta pessoa."}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="space-y-1">
                     <label className="text-xs font-bold uppercase text-muted-foreground">Cargo / Permissão</label>

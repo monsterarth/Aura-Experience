@@ -23,7 +23,7 @@ import {
   UserCircle2, Smartphone, Heart, History,
   Package, ArrowLeftRight, SlidersHorizontal,
   ShoppingCart, Truck, Landmark, AlertOctagon, ListFilter,
-  CircleDollarSign, Handshake, Hourglass, Megaphone, Plug, Car,
+  CircleDollarSign, Handshake, Hourglass, Megaphone, Plug, Car, Clock,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { T as SharedT } from "@/lib/admin-tokens";
@@ -217,6 +217,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "estruturas", label: "Estruturas",         icon: LayoutTemplate,   href: "/admin/estruturas", roles: ["super_admin","admin","manager"] },
       { id: "resort_map", label: "Mapa do Resort",     icon: MapPinned,        href: "/admin/resort-map", roles: ["super_admin","admin","manager"] },
       { id: "escalas",    label: "Escalas",            icon: ClipboardCheck,   href: "/admin/escalas",         roles: ["super_admin","admin","manager"] },
+      { id: "ponto",      label: "Ponto",              icon: Clock,            href: "/admin/ponto",           roles: ["super_admin","admin","manager","reception","governance","kitchen","marketing","compras","maintenance"], module: "ponto" },
       { id: "logs",       label: "Logs de Auditoria",  icon: FileText,         href: "/admin/logs",            roles: ["super_admin","admin","manager"] },
       { id: "avaliacoes", label: "Avaliações",         icon: Star,             href: "/admin/surveys/responses", roles: ["super_admin","admin","reception","marketing","manager"], exactMatch: true },
       { id: "avaliacoes_todas", label: "Todas as avaliações", icon: ListFilter, href: "/admin/surveys/avaliacoes", roles: ["super_admin","admin","reception","marketing","manager"] },

@@ -13,6 +13,7 @@ import { T } from "@/lib/admin-tokens";
 import { IconButton } from "@/components/aura/Button";
 import { Dialog } from "@/components/aura/Dialog";
 import { EnvBadge } from "@/components/admin/EnvBadge";
+import { TimeClockButton } from "@/components/admin/TimeClockButton";
 
 // ─── Route label map ──────────────────────────────────────────────────────────
 const ROUTE_LABELS: Record<string, string> = {
@@ -376,6 +377,8 @@ export function AdminTopbar({ onMenuClick }: { onMenuClick?: () => void }) {
         <span className="inline-flex sm:hidden">
           <IconButton icon={Search} label="Buscar" size="lg" onClick={() => setSearchOpen(true)} />
         </span>
+        {/* Só aparece para quem bate ponto pelo Aura — o componente decide sozinho. */}
+        <TimeClockButton />
         <NotificationCenter />
       </div>
 

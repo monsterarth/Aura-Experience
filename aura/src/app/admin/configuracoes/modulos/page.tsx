@@ -13,9 +13,9 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { SettingRow } from "@/components/ui/SettingRow";
 import { Toggle } from "@/components/ui/Toggle";
 import { isModuleOn } from "@/lib/modules";
-import { Blocks, Boxes, Car } from "lucide-react";
+import { Blocks, Boxes, Car, Clock } from "lucide-react";
 
-interface Draft { hasStock: boolean; hasGuarita: boolean }
+interface Draft { hasStock: boolean; hasGuarita: boolean; hasTimeclock: boolean }
 
 export default function ModulosPage() {
   const { isSuperAdmin } = useAuth();
@@ -25,6 +25,7 @@ export default function ModulosPage() {
     // continua aberto na API.
     hasStock: isModuleOn(p.settings, "estoque"),
     hasGuarita: isModuleOn(p.settings, "guarita"),
+    hasTimeclock: isModuleOn(p.settings, "ponto"),
   }));
 
   if (!draft) return <SkeletonList rows={4} avatar={false} />;
@@ -33,7 +34,9 @@ export default function ModulosPage() {
     ? "Com o módulo desligado, o grupo Compras & Estoque some do menu para todos."
     : !draft.hasGuarita
       ? "Com a Guarita desligada, a página some do menu e o app do porteiro para de responder."
-      : undefined;
+      : !draft.hasTimeclock
+        ? "Com o Ponto desligado, o botão de bater ponto some do topo e a página sai do menu. As batidas já registradas ficam guardadas."
+        : undefined;
 
   return (
     <div className="max-w-2xl space-y-4">
@@ -60,12 +63,21 @@ export default function ModulosPage() {
         >
           <Toggle checked={draft.hasGuarita} disabled={!isSuperAdmin} label="Guarita & Estacionamento" />
         </SettingRow>
+
+        <SettingRow
+          title="Ponto"
+          icon={Clock}
+          description="Registro de entrada e saída pelo próprio funcionário, com relatório de horas por período. Quem bate ponto é definido pessoa a pessoa no cadastro da equipe."
+          onClick={isSuperAdmin ? () => patch({ hasTimeclock: !draft.hasTimeclock }) : undefined}
+        >
+          <Toggle checked={draft.hasTimeclock} disabled={!isSuperAdmin} label="Ponto" />
+        </SettingRow>
       </SectionCard>
 
       {isSuperAdmin && (
         <SaveBar
           dirty={dirty} saving={saving} onReset={reset}
-          onSave={() => save((d) => ({ patch: { hasStock: d.hasStock, hasGuarita: d.hasGuarita } }))}
+          onSave={() => save((d) => ({ patch: { hasStock: d.hasStock, hasGuarita: d.hasGuarita, hasTimeclock: d.hasTimeclock } }))}
           warning={warning}
         />
       )}

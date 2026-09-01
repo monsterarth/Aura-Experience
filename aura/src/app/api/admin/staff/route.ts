@@ -396,8 +396,20 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Não pode alterar os próprios acessos adicionais." }, { status: 403 });
     }
 
+    // timeSource: quem bate ponto é decisão de quem administra, não de quem bate
+    // — senão qualquer pessoa se liga (ou se desliga) do ponto sozinha, e o
+    // registro deixa de valer como registro.
+    if ('timeSource' in updates) {
+      if (isSelf) {
+        return NextResponse.json({ error: "Não pode alterar o próprio registro de ponto." }, { status: 403 });
+      }
+      if (!['none', 'aura', 'rep'].includes(String(updates['timeSource']))) {
+        return NextResponse.json({ error: "Origem de ponto inválida." }, { status: 400 });
+      }
+    }
+
     // Campos permitidos — role/secondaryRoles só chegam aqui se passaram nas guards acima
-    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role', 'uiTheme', 'sidebarDefaultCollapsed', 'staysViewAtivas', 'staysViewFuturas', 'secondaryRoles', 'vehiclePlate'];
+    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role', 'uiTheme', 'sidebarDefaultCollapsed', 'staysViewAtivas', 'staysViewFuturas', 'secondaryRoles', 'vehiclePlate', 'timeSource'];
     const safeUpdates: Record<string, unknown> = {};
     for (const key of allowedFields) {
       if (key in updates) safeUpdates[key] = updates[key];

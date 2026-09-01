@@ -24,6 +24,7 @@ export const SETTINGS_KEY_ROLES: Record<string, UserRole[]> = {
   hasWeddingSite: ["super_admin"],
   hasHsystem: ["super_admin"],
   hasGuarita: ["super_admin"],
+  hasTimeclock: ["super_admin"],
 
   // Identidade e integrações.
   slogan: ["super_admin", "admin"],

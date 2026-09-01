@@ -1002,8 +1002,12 @@ export interface AuditLog {
   | 'HSYSTEM_CREATED' | 'HSYSTEM_UPDATED' | 'HSYSTEM_CANCELLED'
   | 'HSYSTEM_NEEDS_ATTENTION' | 'HSYSTEM_FAILED'
   | 'PARKING_ENTRY' | 'PARKING_EXIT' | 'PARKING_RATE_SET'
-  | 'PARKING_SHIFT_CLOSED' | 'VEHICLE_STATUS_SET';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY' | 'RATE_TABLE' | 'RATE_QUOTE' | 'RATE_FLUCTUATION' | 'RATE_SETTINGS' | 'WEDDING' | 'PARKING';
+  | 'PARKING_SHIFT_CLOSED' | 'VEHICLE_STATUS_SET'
+  /* Ponto: só o que MEXE no passado é auditado. A batida normal já é o próprio
+     registro — auditá-la duplicaria o dado e afogaria o log em ruído. */
+  | 'TIMECLOCK_MANUAL' | 'TIMECLOCK_ADJUSTED' | 'TIMECLOCK_DELETED'
+  | 'TIMECLOCK_SOURCE_SET';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY' | 'RATE_TABLE' | 'RATE_QUOTE' | 'RATE_FLUCTUATION' | 'RATE_SETTINGS' | 'WEDDING' | 'PARKING' | 'TIMECLOCK';
   entityId: string;
   oldData?: any;
   newData?: any;
@@ -1059,6 +1063,81 @@ export interface Staff {
    * Normalizada sem hífen: ABC1D23.
    */
   vehiclePlate?: string;
+  /**
+   * De onde vem o ponto desta pessoa (módulo Ponto). Exclusivo por decisão:
+   * ou bate no Aura, ou bate no relógio, ou não bate. Ver `TimeSource`.
+   */
+  timeSource?: TimeSource;
+}
+
+// --- PONTO ---
+/**
+ * Origem do ponto de um funcionário. Estados MUTUAMENTE EXCLUSIVOS:
+ * - `none` (padrão) — não registra ponto.
+ * - `aura` — bate pelo próprio sistema (botão no topo do admin).
+ * - `rep`  — bate no relógio biométrico; o Aura recebe por importação do AFD.
+ */
+export type TimeSource = 'none' | 'aura' | 'rep';
+
+/** Como a batida nasceu. Fica na BATIDA, não só no cadastro: trocar o modo de
+ *  alguém não pode reescrever o passado. */
+export type TimeClockSource = 'aura' | 'rep' | 'manual';
+
+export interface TimeClockEvent {
+  id: string;
+  staffId: string;
+  propertyId: string | null;
+  /** Momento efetivo — é o que conta horas, e é o que o ajuste altera. */
+  ts: string;
+  kind: 'in' | 'out';
+  source: TimeClockSource;
+  ip?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  geoAccuracy?: number | null;
+  note?: string | null;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+  /** Preenchido no primeiro ajuste; guarda o valor com que a batida nasceu. */
+  originalTs?: string | null;
+  editedBy?: string | null;
+  editedByName?: string | null;
+  editedAt?: string | null;
+  deletedAt?: string | null;
+  deletedBy?: string | null;
+  deletedByName?: string | null;
+  deleteReason?: string | null;
+  /** Fase 2 — identidade da batida no relógio (idempotência do import). */
+  repSerial?: string | null;
+  nsr?: number | null;
+}
+
+/** Um par entrada→saída derivado da sequência de batidas. Nunca é gravado. */
+export interface WorkSession {
+  start: TimeClockEvent;
+  /** Ausente enquanto a pessoa não bateu a saída. */
+  end?: TimeClockEvent;
+  /** Duração em minutos; `null` enquanto a jornada está aberta. */
+  minutes: number | null;
+  /**
+   * - `closed`    — par completo.
+   * - `open`      — entrou e ainda não saiu (jornada de hoje, normal).
+   * - `dangling`  — entrou e nunca saiu, e o dia já virou: pendência a resolver.
+   * - `orphanOut` — saída sem entrada correspondente.
+   */
+  status: 'closed' | 'open' | 'dangling' | 'orphanOut';
+}
+
+/** Um dia de trabalho, agrupado pela data LOCAL em que a jornada começou. */
+export interface TimeClockDay {
+  /** YYYY-MM-DD no fuso de quem lê — a agregação acontece no cliente. */
+  date: string;
+  sessions: WorkSession[];
+  /** Soma das jornadas fechadas, em minutos. Jornada aberta não entra. */
+  minutes: number;
+  hasOpen: boolean;
+  hasPending: boolean;
 }
 
 // --- ESCALAS DE TRABALHO ---

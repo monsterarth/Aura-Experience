@@ -12,7 +12,7 @@
 // banco). Aqui só se lê.
 
 /** Módulos que podem ser desligados por propriedade. */
-export type ModuleKey = "estoque" | "guarita" | "hsystem";
+export type ModuleKey = "estoque" | "guarita" | "hsystem" | "ponto";
 
 interface ModuleDef {
   /** Chave em `properties.settings`. */
@@ -32,6 +32,7 @@ export const MODULES: Record<ModuleKey, ModuleDef> = {
   estoque: { setting: "hasStock", defaultOn: true, label: "Compras & Estoque" },
   guarita: { setting: "hasGuarita", defaultOn: false, label: "Guarita & Estacionamento" },
   hsystem: { setting: "hasHsystem", defaultOn: false, label: "Hsystem (canais)" },
+  ponto: { setting: "hasTimeclock", defaultOn: false, label: "Ponto" },
 };
 
 /**
