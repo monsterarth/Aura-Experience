@@ -354,56 +354,23 @@ export default function ComercialConfigPage() {
       </SectionCard>
 
       <SectionCard
-        title="Idade dos acompanhantes" icon={Baby}
-        description="Quem não paga, quem paga meia e quem paga inteiro. Vale para o orçamento e para classificar as reservas que chegam pelos canais."
+        title="Gratuidade por idade" icon={Baby}
+        description="Até que idade o acompanhante não entra no preço. Ele continua ocupando vaga: a capacidade da acomodação conta pessoas, não pagantes."
       >
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-2xl">
-          <div>
-            <label className="field-label">Isento até (anos)</label>
-            <input
-              type="number" min={0} max={17} step={1} className="field-input w-full"
-              value={draft.agePolicy?.freeUpToAge ?? 5}
-              onChange={(e) => patch({ agePolicy: {
-                ...(draft.agePolicy ?? DEFAULT_AGE_POLICY),
-                freeUpToAge: Math.max(0, Math.min(17, parseInt(e.target.value || "0", 10))),
-              } })}
-            />
-            <p className="text-[11px] text-muted-foreground mt-1">
-              0 a {draft.agePolicy?.freeUpToAge ?? 5} anos não entram como pagantes.
-            </p>
-          </div>
-          <div>
-            <label className="field-label">Meia diária até (anos)</label>
-            <input
-              type="number" min={0} max={17} step={1} className="field-input w-full"
-              placeholder="sem meia"
-              value={draft.agePolicy?.halfUpToAge ?? ""}
-              onChange={(e) => patch({ agePolicy: {
-                ...(draft.agePolicy ?? DEFAULT_AGE_POLICY),
-                halfUpToAge: e.target.value === "" ? null : Math.max(0, Math.min(17, parseInt(e.target.value, 10))),
-              } })}
-            />
-            <p className="text-[11px] text-muted-foreground mt-1">
-              Vazio = ninguém paga meia; a partir de {(draft.agePolicy?.freeUpToAge ?? 5) + 1} anos paga inteiro.
-            </p>
-          </div>
-          <div>
-            <label className="field-label">Meia equivale a (%)</label>
-            <input
-              type="number" min={0} max={100} step={5} className="field-input w-full"
-              value={draft.agePolicy?.halfPercent ?? 50}
-              disabled={draft.agePolicy?.halfUpToAge == null}
-              onChange={(e) => patch({ agePolicy: {
-                ...(draft.agePolicy ?? DEFAULT_AGE_POLICY),
-                halfPercent: Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)),
-              } })}
-            />
-          </div>
+        <div className="max-w-[180px]">
+          <label className="field-label">Isento até (anos)</label>
+          <input
+            type="number" min={0} max={17} step={1} className="field-input w-full"
+            value={draft.agePolicy?.freeUpToAge ?? 5}
+            onChange={(e) => patch({ agePolicy: {
+              freeUpToAge: Math.max(0, Math.min(17, parseInt(e.target.value || "0", 10))),
+            } })}
+          />
         </div>
         <p className="text-[11px] text-muted-foreground mt-3">
-          A faixa isenta já vale na importação de reservas dos canais: criança dentro dela entra como bebê,
-          fora dela como criança. O desconto de meia diária ainda não é aplicado no cálculo do orçamento —
-          a coluna do tarifário conta pagantes inteiros.
+          0 a {draft.agePolicy?.freeUpToAge ?? 5} anos não entram como pagantes; a partir de{" "}
+          {(draft.agePolicy?.freeUpToAge ?? 5) + 1} anos, sim. Vale também na importação de reservas
+          dos canais: criança dentro da faixa entra como bebê.
         </p>
       </SectionCard>
 

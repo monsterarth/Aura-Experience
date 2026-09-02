@@ -393,24 +393,27 @@ export const HsystemService = {
       };
     }
 
+    const agePolicy = await this.getAgePolicy(pid);
+
     // Encaixe por tipo — sequencial para não alocar a mesma cabana duas vezes na
     // mesma reserva multi-quarto com datas sobrepostas.
     const taken = new Set<string>();
     const allocations: { room: HunitRoom; cabinId: string }[] = [];
     for (const room of rooms) {
       const categoryId = ctx.config.categoryMap[room.roomTypeId];
-      const cabinId = await this._allocateCabin(pid, categoryId, room.arrivalDate!, room.departureDate!, taken);
+      const roomSplit = splitChildren(room.children || 0, room.childrenAges, agePolicy);
+      const roomPax = (room.adults || 1) + roomSplit.children + roomSplit.babies;
+      const cabinId = await this._allocateCabin(pid, categoryId, room.arrivalDate!, room.departureDate!, taken, [], roomPax);
       if (!cabinId) {
         return {
           action: "needs_attention",
-          detail: `sem cabana livre na categoria mapeada para ${room.roomTypeId} (${room.arrivalDate} → ${room.departureDate})`,
+          detail: `sem cabana livre com capacidade para ${roomPax} pessoa(s) na categoria de ${room.roomTypeId} (${room.arrivalDate} → ${room.departureDate})`,
         };
       }
       taken.add(cabinId);
       allocations.push({ room, cabinId });
     }
 
-    const agePolicy = await this.getAgePolicy(pid);
     const guestId = await this._upsertGuest(pid, resv);
     const accessCode = await this._generateAccessCode(pid);
     const groupId = allocations.length > 1 ? `GRP-${randomUUID().slice(0, 8).toUpperCase()}` : null;
@@ -615,7 +618,7 @@ export const HsystemService = {
   async _sellableCabins(propertyId: string, categoryId?: string) {
     let q = db()
       .from("cabins")
-      .select('id, number, name, "categoryId", "ignoreInOccupancy"')
+      .select('id, number, name, capacity, "categoryId", "ignoreInOccupancy"')
       .eq("propertyId", propertyId)
       // Cabana fora de operação não recebe reserva do canal. O filtro tinha
       // saído daqui porque a coluna não existia no DEV — existia só em
@@ -682,8 +685,16 @@ export const HsystemService = {
     co: string,
     taken: Set<string>,
     excludeStayIds: string[] = [],
+    /** Total de PESSOAS (inclui isentos — eles ocupam vaga, só não pagam). */
+    pax = 0,
   ): Promise<string | null> {
-    const cabins = (await this._sellableCabins(propertyId, categoryId)).filter((c) => !taken.has(c.id));
+    const all = (await this._sellableCabins(propertyId, categoryId)).filter((c) => !taken.has(c.id));
+    // Capacidade é limite físico: bebê ocupa cama como qualquer um. Cabana sem
+    // capacidade cadastrada (0/null) não é filtrada — seria pior recusar por
+    // falta de cadastro do que aceitar e deixar a recepção conferir.
+    const cabins = pax > 0
+      ? all.filter((c) => !c.capacity || Number(c.capacity) >= pax)
+      : all;
     if (cabins.length === 0) return null;
     // Janela larga (±1 dia) para enxergar os vizinhos que "encostam".
     const busy = await this._busyIntervals(propertyId, cabins.map((c) => c.id), addDays(ci, -1), addDays(co, 1), excludeStayIds);

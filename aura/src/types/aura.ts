@@ -2830,29 +2830,25 @@ export interface RatePaymentOption {
 
 /** Config comercial do tarifário — 1 linha por propriedade. */
 /**
- * Política de idade dos acompanhantes — quem é isento, quem paga meia e quem
- * paga inteiro. Regra da casa, não constante de código: cada propriedade define
- * a sua, e a mesma política classifica a reserva que chega do canal.
+ * Idade de gratuidade dos acompanhantes — regra da casa, não constante de código.
+ *
+ * Quem está na faixa isenta **não entra no preço**, mas **ocupa vaga como
+ * qualquer pessoa**: a capacidade da acomodação conta cabeças, não pagantes.
+ * A mesma política classifica bebê × criança na reserva que chega do canal.
  */
 export interface GuestAgePolicy {
   /** Isento até esta idade, inclusive (5 = 0 a 5 anos não paga). */
   freeUpToAge: number;
-  /** Meia diária até esta idade, inclusive. null = ninguém paga meia (vai de isento a inteiro). */
-  halfUpToAge?: number | null;
-  /** Percentual cobrado na faixa de meia (padrão 50). */
-  halfPercent?: number;
 }
 
 export const DEFAULT_AGE_POLICY: GuestAgePolicy = {
-  freeUpToAge: 5,      // 0 a 5 isento; a partir de 6 paga
-  halfUpToAge: null,   // hoje criança de 6+ paga inteiro
-  halfPercent: 50,
+  freeUpToAge: 5,   // 0 a 5 isento; a partir de 6 paga
 };
 
 export interface RateSettings {
   propertyId: string;
   petFee: number;      // por pet, por diária
-  /** Faixas de idade: isento · meia · inteiro. Ausente = DEFAULT_AGE_POLICY. */
+  /** Idade de gratuidade. Ausente = DEFAULT_AGE_POLICY. */
   agePolicy?: GuestAgePolicy | null;
   fluctuations: RateFluctuation[];
   discounts: RateDiscount[];
