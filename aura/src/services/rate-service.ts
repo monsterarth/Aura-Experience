@@ -707,6 +707,20 @@ export const RateService = {
     if (typeof settings.petFee === "number" && isFinite(settings.petFee)) {
       clean.petFee = Math.max(0, settings.petFee);
     }
+    // Política de idade: faixas coerentes ou nada. Meia abaixo da isenção seria
+    // uma faixa negativa — nesse caso a meia simplesmente não existe.
+    if (settings.agePolicy && typeof settings.agePolicy === "object") {
+      const free = Math.max(0, Math.min(17, Math.floor(Number(settings.agePolicy.freeUpToAge) || 0)));
+      const halfRaw = settings.agePolicy.halfUpToAge;
+      const half = halfRaw === null || halfRaw === undefined || !isFinite(Number(halfRaw))
+        ? null
+        : Math.max(0, Math.min(17, Math.floor(Number(halfRaw))));
+      clean.agePolicy = {
+        freeUpToAge: free,
+        halfUpToAge: half !== null && half > free ? half : null,
+        halfPercent: Math.min(100, Math.max(0, Number(settings.agePolicy.halfPercent) || 50)),
+      };
+    }
     if (Array.isArray(settings.fluctuations)) clean.fluctuations = settings.fluctuations;
     if (Array.isArray(settings.discounts)) clean.discounts = settings.discounts;
     if (Array.isArray(settings.promos)) clean.promos = settings.promos;

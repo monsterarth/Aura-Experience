@@ -57,6 +57,8 @@ export interface HunitRoom {
   departureDate: string | null;      // YYYY-MM-DD
   adults: number;
   children: number;
+  /** Idades das crianças, quando o canal informa. Separa bebê de criança na importação. */
+  childrenAges: number[];
   totalValue: number | null;
   totalValueWithTaxes: number | null;
   dailyRates: HunitDailyRate[];
@@ -212,6 +214,27 @@ async function post(path: string, xml: string, timeoutMs = 25_000): Promise<any>
 
 // ─── Parse de reserva ────────────────────────────────────────────────────────
 
+/**
+ * Idades das crianças (`<ageChildren>`), que o HUNIT passou a mandar na v8.4.
+ * O formato não está especificado no manual e varia entre integrações — pode vir
+ * como lista de elementos, um único valor, ou string separada por vírgula/ponto
+ * e vírgula. Aceita as três formas e ignora o que não for idade plausível.
+ */
+export function parseChildrenAges(raw: any): number[] {
+  if (raw === null || raw === undefined || raw === "") return [];
+  const flat: unknown[] = Array.isArray(raw)
+    ? raw
+    : typeof raw === "object"
+      ? toArray<any>((raw as any).age ?? (raw as any).child ?? Object.values(raw))
+      : String(raw).split(/[,;|\s]+/);
+  const ages: number[] = [];
+  for (const item of flat) {
+    const n = Number(typeof item === "object" && item !== null ? (item as any)["#text"] ?? (item as any).age : item);
+    if (Number.isFinite(n) && n >= 0 && n <= 17) ages.push(Math.floor(n));
+  }
+  return ages;
+}
+
 function parseRoom(raw: any): HunitRoom {
   return {
     id: str(raw?.id) ?? "",
@@ -223,6 +246,7 @@ function parseRoom(raw: any): HunitRoom {
     departureDate: parseHunitDate(raw?.departureDate),
     adults: int(raw?.adults) ?? 0,
     children: int(raw?.children) ?? 0,
+    childrenAges: parseChildrenAges(raw?.ageChildren),
     totalValue: parseHunitDecimal(raw?.totalValue),
     totalValueWithTaxes: parseHunitDecimal(raw?.totalValueWithTaxes),
     dailyRates: toArray<any>(raw?.dailyRates?.dailyRate).map((d) => ({

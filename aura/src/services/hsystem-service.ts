@@ -27,7 +27,8 @@ import {
 } from "@/lib/hunit";
 import { PropertySecretsService } from "./property-secrets-service";
 import { AuditService } from "./audit-service";
-import type { HsystemConfig, HsystemReservationAction } from "@/types/aura";
+import type { GuestAgePolicy, HsystemConfig, HsystemReservationAction } from "@/types/aura";
+import { DEFAULT_AGE_POLICY } from "@/types/aura";
 import { DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
 import { createHash, randomUUID } from "crypto";
 import { todayPropertyIso, addDays } from "@/lib/dates";
@@ -105,6 +106,25 @@ function contentHashOf(r: HunitReservation): string {
   return createHash("sha1").update(JSON.stringify(r)).digest("hex");
 }
 
+/**
+ * Separa criança de bebê pela política da propriedade.
+ *
+ * O HUNIT manda só `adults` e `children` — "bebê" não existe no protocolo. Mas
+ * quando o canal informa as idades (`ageChildren`), dá para classificar sozinho:
+ * quem está na faixa isenta entra como bebê, o resto como criança. Sem idade
+ * informada, todos ficam como criança — errar para o lado de cobrar a mais
+ * seria pior, mas errar para menos também: por isso o padrão é o que o canal
+ * disse, e a recepção ajusta se souber.
+ */
+function splitChildren(children: number, ages: number[], policy: GuestAgePolicy): { children: number; babies: number } {
+  if (children <= 0) return { children: 0, babies: 0 };
+  if (ages.length === 0) return { children, babies: 0 };
+  const babies = ages.filter((a) => a <= policy.freeUpToAge).length;
+  // A lista de idades pode vir incompleta; nunca devolver mais gente do que veio.
+  const safeBabies = Math.min(babies, children);
+  return { children: children - safeBabies, babies: safeBabies };
+}
+
 /** Slug de canal para `Stay.source` — reaproveita os slugs do CRM quando existem. */
 function sourceSlugFor(portalName: string | null, isHbook: boolean): string {
   if (isHbook) return "site";
@@ -154,6 +174,14 @@ export const HsystemService = {
       checkInTime: settings.checkInTime || DEFAULT_CHECK_IN_TIME,
       checkOutTime: settings.checkOutTime || DEFAULT_CHECK_OUT_TIME,
     };
+  },
+
+  /** Política de idade da propriedade (rate_settings) — cai no padrão se não houver. */
+  async getAgePolicy(propertyId: string): Promise<GuestAgePolicy> {
+    const { data } = await db()
+      .from("rate_settings").select('"agePolicy"').eq("propertyId", propertyId).maybeSingle();
+    const p = (data?.agePolicy ?? null) as GuestAgePolicy | null;
+    return p && typeof p.freeUpToAge === "number" ? { ...DEFAULT_AGE_POLICY, ...p } : DEFAULT_AGE_POLICY;
   },
 
   async getCredentials(ctx: HsystemContext): Promise<HunitCredentials> {
@@ -382,6 +410,7 @@ export const HsystemService = {
       allocations.push({ room, cabinId });
     }
 
+    const agePolicy = await this.getAgePolicy(pid);
     const guestId = await this._upsertGuest(pid, resv);
     const accessCode = await this._generateAccessCode(pid);
     const groupId = allocations.length > 1 ? `GRP-${randomUUID().slice(0, 8).toUpperCase()}` : null;
@@ -399,8 +428,10 @@ export const HsystemService = {
         if (dr.date && dr.totalValue !== null) overrides[dr.date] = dr.totalValue;
       }
       const additionalGuests: { id: string; type: string; fullName: string; document: string; birthDate: string }[] = [];
+      const split = splitChildren(room.children || 0, room.childrenAges, agePolicy);
       for (let i = 0; i < Math.max(0, room.adults - 1); i++) additionalGuests.push({ id: randomUUID(), type: "adult", fullName: "ACOMPANHANTE", document: "", birthDate: "" });
-      for (let i = 0; i < room.children; i++) additionalGuests.push({ id: randomUUID(), type: "child", fullName: "ACOMPANHANTE", document: "", birthDate: "" });
+      for (let i = 0; i < split.children; i++) additionalGuests.push({ id: randomUUID(), type: "child", fullName: "ACOMPANHANTE", document: "", birthDate: "" });
+      for (let i = 0; i < split.babies; i++) additionalGuests.push({ id: randomUUID(), type: "free", fullName: "ACOMPANHANTE", document: "", birthDate: "" });
 
       return {
         id: randomUUID(),
@@ -411,7 +442,7 @@ export const HsystemService = {
         accessCode,
         checkIn: stampBrt(room.arrivalDate!, ctx.checkInTime, DEFAULT_CHECK_IN_TIME),
         checkOut: stampBrt(room.departureDate!, ctx.checkOutTime, DEFAULT_CHECK_OUT_TIME),
-        counts: { adults: room.adults || 1, children: room.children || 0, babies: 0 },
+        counts: { adults: room.adults || 1, ...splitChildren(room.children || 0, room.childrenAges, agePolicy) },
         additionalGuests,
         internalUse: false,
         internalLabel: null,
