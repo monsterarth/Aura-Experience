@@ -31,12 +31,14 @@ function extractMediaUrl(message: Record<string, any>): string | null {
 
 // Resolve propertyId a partir do nome da instância Evolution
 async function resolvePropertyId(instance: string): Promise<string | null> {
+  // Só o `whatsappConfig`: este webhook dispara a cada mensagem recebida, e
+  // trazer `settings` inteiro custava 17KB comprimidos por mensagem contra 208B.
   const { data: properties } = await supabaseAdmin
     .from("properties")
-    .select("id, settings");
+    .select("id, whatsappConfig:settings->whatsappConfig");
 
   const match = properties?.find((p) => {
-    const cfg = p.settings?.whatsappConfig;
+    const cfg = (p as any).whatsappConfig;
     if (!cfg) return false;
     if (cfg.instanceName === instance) return true;
     if (cfg.instances?.some((i: { instanceName: string }) => i.instanceName === instance)) return true;

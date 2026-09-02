@@ -27,14 +27,22 @@ export async function GET(request: Request) {
   }
   if (!supabaseAdmin) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
 
-  const { data: properties } = await supabaseAdmin.from('properties').select('id, settings');
-  const enabled = (properties ?? []).filter((p) => (p.settings as any)?.hasHsystem === true);
+  // SÓ as duas chaves que esta rota lê. `settings` inteiro são ~17KB comprimidos
+  // por chamada (quase tudo texto de política — `generalPolicyText` sozinho tem
+  // 16KB), e este cron roda a cada 1–5 min: medido em 02/09/2026, o `select`
+  // largo daqui e das outras duas rotas de servidor custava ~1GB/mês, um quinto
+  // da cota de egress. Chave ausente volta `null`, então o `=== true` abaixo
+  // continua se comportando igual.
+  const { data: properties } = await supabaseAdmin
+    .from('properties')
+    .select('id, hasHsystem:settings->hasHsystem, hsystemConfig:settings->hsystemConfig');
+  const enabled = (properties ?? []).filter((p) => (p as any).hasHsystem === true);
 
   const results: Record<string, unknown> = {};
   for (const prop of enabled) {
     const bookings = await HsystemService.syncBookings(prop.id);
     let availability: unknown = { skipped: 'desligado' };
-    const cfg = (prop.settings as any)?.hsystemConfig ?? {};
+    const cfg = (prop as any).hsystemConfig ?? {};
     if (cfg.mode === 'active' && cfg.pushAvailability) {
       availability = await HsystemService.pushAvailability(prop.id);
     }

@@ -103,9 +103,10 @@ async function lastEvent(actions: string[]) {
 
 /** Propriedades com WhatsApp ligado — o fan-out de push é por propriedade. */
 async function whatsappPropertyIds(): Promise<string[]> {
-  const { data } = await db().from("properties").select("id, settings");
+  // Só a flag — `settings` inteiro são 17KB comprimidos contra 110B aqui.
+  const { data } = await db().from("properties").select("id, whatsappEnabled:settings->whatsappEnabled");
   return (data ?? [])
-    .filter((p) => Boolean((p.settings as { whatsappEnabled?: boolean } | null)?.whatsappEnabled))
+    .filter((p) => Boolean((p as { whatsappEnabled?: boolean }).whatsappEnabled))
     .map((p) => p.id as string);
 }
 
