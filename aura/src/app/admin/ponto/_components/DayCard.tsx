@@ -108,7 +108,7 @@ export function DayCard({
   onFix: (session: WorkSession) => void;
 }) {
   return (
-    <Card style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <Card style={{ display: "flex", flexDirection: "column", gap: 10, opacity: day.sessions.length === 0 ? 0.62 : 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 800, color: T.text, textTransform: "capitalize" }}>
           {formatDayLabel(day.date)}
@@ -121,9 +121,13 @@ export function DayCard({
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 4, borderTop: `1px solid ${T.border}`, paddingTop: 8 }}>
-        {day.sessions.map((session, i) => (
-          <SessionRow key={session.start.id + i} session={session} onEdit={onEdit} onFix={onFix} />
-        ))}
+        {day.sessions.length === 0
+          ? <span style={{ fontSize: 13, color: T.muted2, fontWeight: 600, minHeight: 32, display: "flex", alignItems: "center" }}>
+              Sem registro
+            </span>
+          : day.sessions.map((session, i) => (
+              <SessionRow key={session.start.id + i} session={session} onEdit={onEdit} onFix={onFix} />
+            ))}
       </div>
     </Card>
   );

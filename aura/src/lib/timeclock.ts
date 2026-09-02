@@ -135,6 +135,36 @@ export function groupByDay(sessions: WorkSession[]): TimeClockDay[] {
   return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/**
+ * Completa o período com os dias SEM batida nenhuma.
+ *
+ * `groupByDay` só conhece dias que tiveram registro — num relatório entregue a
+ * quem contrata, o dia vazio é informação (folga, falta), não ausência de dado.
+ * O mês corrente para em HOJE: dia futuro em branco não diz nada.
+ *
+ * `to` é exclusivo, como no resto do módulo.
+ */
+export function fillDays(days: TimeClockDay[], from: Date, to: Date, now: Date = new Date()): TimeClockDay[] {
+  const byDate = new Map(days.map(d => [d.date, d]));
+  const out: TimeClockDay[] = [];
+
+  const last = new Date(Math.min(to.getTime() - 1, now.getTime()));
+  const cursor = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+
+  while (cursor.getTime() <= last.getTime()) {
+    const ymd = localYMD(cursor);
+    out.push(byDate.get(ymd) ?? { date: ymd, sessions: [], minutes: 0, hasOpen: false, hasPending: false });
+    byDate.delete(ymd);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  // Dia com batida fora da janela varrida (jornada iniciada antes do período)
+  // não pode sumir só porque o calendário não passou por ele.
+  for (const leftover of Array.from(byDate.values())) out.push(leftover);
+
+  return out.sort((a, b) => b.date.localeCompare(a.date));
+}
+
 export interface ClockStatus {
   /** Há uma jornada aberta agora? */
   inside: boolean;

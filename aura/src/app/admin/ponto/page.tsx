@@ -80,6 +80,10 @@ function PontoInner() {
   const exportCsv = () => {
     const rows: string[][] = [["Dia", "Entrada", "Saída", "Horas", "Horas (decimal)", "Observação"]];
     for (const day of [...ponto.days].reverse()) {
+      if (day.sessions.length === 0) {
+        rows.push([formatDayLabel(day.date), "", "", "", "", "sem registro"]);
+        continue;
+      }
       for (const session of day.sessions) {
         const orphan = session.status === "orphanOut";
         rows.push([

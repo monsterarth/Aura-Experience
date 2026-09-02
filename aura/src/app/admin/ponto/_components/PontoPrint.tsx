@@ -42,6 +42,7 @@ export function PontoPrint({
                 {formatDayLabel(day.date)}
               </td>
               <td style={{ padding: "6px 8px", fontSize: 12 }}>
+                {day.sessions.length === 0 && <span style={{ opacity: 0.6 }}>sem registro</span>}
                 {day.sessions.map((s, i) => (
                   <span key={i} style={{ marginRight: 10, whiteSpace: "nowrap" }}>
                     {s.status === "orphanOut" ? "—" : localHM(s.start.ts)}
@@ -51,7 +52,7 @@ export function PontoPrint({
                 ))}
               </td>
               <td style={{ padding: "6px 8px", fontSize: 12, textAlign: "right", fontWeight: 700, whiteSpace: "nowrap" }}>
-                {formatMinutes(day.minutes)}
+                {day.sessions.length === 0 ? "—" : formatMinutes(day.minutes)}
               </td>
             </tr>
           ))}

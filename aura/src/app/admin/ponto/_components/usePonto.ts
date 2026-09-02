@@ -10,7 +10,7 @@
 // dia 31 cairia no mês seguinte.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { buildSessions, groupByDay } from "@/lib/timeclock";
+import { buildSessions, fillDays, groupByDay } from "@/lib/timeclock";
 import type { TimeClockEvent, TimeSource, UserRole } from "@/types/aura";
 
 export interface TrackedStaff {
@@ -64,7 +64,12 @@ export function usePonto(selfId: string | undefined, propertyId?: string | null)
 
   useEffect(() => { load(); }, [load]);
 
-  const days = useMemo(() => groupByDay(buildSessions(events)), [events]);
+  // O calendário do período inteiro, e não só os dias com batida: a folga é
+  // informação no relatório de quem presta serviço.
+  const days = useMemo(
+    () => fillDays(groupByDay(buildSessions(events)), range.from, range.to),
+    [events, range.from, range.to],
+  );
 
   const totals = useMemo(() => {
     const minutes = days.reduce((sum, d) => sum + d.minutes, 0);

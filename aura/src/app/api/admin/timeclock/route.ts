@@ -20,9 +20,20 @@ const MANAGER_ROLES: UserRole[] = ["super_admin", "admin", "manager"];
  * fazenda. (O navegador não lê o SSID do Wi-Fi: não existe API para isso.)
  */
 function clientIp(request: NextRequest): string | null {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return request.headers.get("x-real-ip");
+  // A ordem importa: o site está atrás da Cloudflare, e ali o `x-forwarded-for`
+  // chega com o IP do PROXY na primeira posição — a primeira batida real gravou
+  // um 172.71.x.x da própria Cloudflare. `cf-connecting-ip` é o único header que
+  // carrega o endereço de quem realmente bateu.
+  const candidates = [
+    request.headers.get("cf-connecting-ip"),
+    request.headers.get("x-real-ip"),
+    request.headers.get("x-forwarded-for")?.split(",")[0],
+  ];
+  for (const value of candidates) {
+    const ip = value?.trim();
+    if (ip) return ip;
+  }
+  return null;
 }
 
 function toNumber(value: unknown): number | null {
