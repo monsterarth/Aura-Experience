@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   ArrowLeft, Pencil, Trash2, ShieldCheck, ArrowRightLeft, ArchiveX,
   Wrench, History, FileText, TrendingDown, ScrollText, RotateCcw, MapPin, User, ExternalLink,
+  Image as ImageIcon,
 } from "lucide-react";
 import AssetFormModal, { ASSET_STATUS } from "@/components/admin/AssetFormModal";
 import AssetDisposalModal from "@/components/admin/AssetDisposalModal";
@@ -51,6 +52,38 @@ function Section({ icon, title, right, children }: {
       {children}
     </section>
   );
+}
+
+/**
+ * Foto do ativo — só baixa quando alguém pede.
+ *
+ * O acervo de patrimônio de ago/2026 entrou como foto crua de celular: 42 fichas
+ * carregam 407MB, com média de 9,7MB por ficha (a pior tem 21,6MB). Carregar
+ * isso de olho fechado num quadrado de 128px torrava a cota de egress do
+ * Supabase sozinho — ~6GB/mês a 20 fichas/dia, num teto de 5GB.
+ *
+ * A trava é temporária: quando o acervo for recomprimido (as fotos novas já
+ * entram com ~37KB), este componente pode voltar a mostrar a imagem direto.
+ */
+function AssetPhoto({ src, alt }: { src: string; alt: string }) {
+  const [shown, setShown] = useState(false);
+
+  if (!shown) {
+    return (
+      <button
+        type="button"
+        onClick={() => setShown(true)}
+        className="w-32 h-32 shrink-0 rounded-2xl border border-border border-dashed bg-muted/40 flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground hover:bg-muted/70 hover:border-solid transition-colors"
+        title="A foto é pesada — carrega só quando você pede"
+      >
+        <ImageIcon size={20} />
+        <span className="text-[10px] font-bold uppercase tracking-widest">Ver foto</span>
+      </button>
+    );
+  }
+
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={alt} className="w-32 h-32 shrink-0 rounded-2xl object-cover border border-border" />;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -130,10 +163,7 @@ export default function AssetDetailPage() {
 
       {/* Cabeçalho */}
       <header className="bg-card border border-border rounded-2xl p-5 flex flex-wrap gap-5">
-        {a.imageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={a.imageUrl} alt={a.name} className="w-32 h-32 rounded-2xl object-cover border border-border" />
-        )}
+        {a.imageUrl && <AssetPhoto src={a.imageUrl} alt={a.name} />}
         <div className="flex-1 min-w-[240px]">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold text-foreground">{a.name}</h1>

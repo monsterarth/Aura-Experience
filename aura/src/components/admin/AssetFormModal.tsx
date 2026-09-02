@@ -190,13 +190,13 @@ export default function AssetFormModal({ propertyId, initial, onClose, onSaved }
               <div>
                 <label className="field-label">Foto do produto</label>
                 <div className="h-36 rounded-xl overflow-hidden border border-border">
-                  <ImageUpload value={form.imageUrl} onUploadSuccess={(url) => setF({ imageUrl: url })} direct maxSizeMb={15} />
+                  <ImageUpload value={form.imageUrl} onUploadSuccess={(url) => setF({ imageUrl: url })} direct maxSizeMb={15} deferPreview />
                 </div>
               </div>
               <div>
                 <label className="field-label">Etiqueta de especificações</label>
                 <div className="h-36 rounded-xl overflow-hidden border border-border">
-                  <ImageUpload value={form.specImageUrl} onUploadSuccess={(url) => setF({ specImageUrl: url })} direct maxSizeMb={15} />
+                  <ImageUpload value={form.specImageUrl} onUploadSuccess={(url) => setF({ specImageUrl: url })} direct maxSizeMb={15} deferPreview />
                 </div>
               </div>
             </div>

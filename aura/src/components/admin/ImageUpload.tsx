@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Loader2, UploadCloud } from 'lucide-react';
+import { Camera, Image as ImageIcon, Loader2, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@supabase/supabase-js';
 import { compressImage } from '@/lib/image-compress';
+import { UPLOAD_CACHE_CONTROL } from '@/lib/upload-cache';
 
 interface ImageUploadProps {
     value?: string;
@@ -36,11 +37,23 @@ interface ImageUploadProps {
      * resolução extra é funcional — ex.: o mapa do resort, que tem zoom.
      */
     compressMaxDim?: number;
+    /**
+     * Não baixa a imagem atual até a pessoa pedir — mostra um "Ver foto" no lugar
+     * da prévia. Use só onde o acervo antigo é pesado (patrimônio: até 21MB por
+     * ativo, e o lote de ago/2026 não entra em cache nenhum). Pode sair quando
+     * esse acervo for recomprimido.
+     */
+    deferPreview?: boolean;
 }
 
-export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles', stayId, accessCode, assetCode, maxSizeMb = 5, fit = 'cover', direct = false, compressMaxDim }: ImageUploadProps) {
+export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles', stayId, accessCode, assetCode, maxSizeMb = 5, fit = 'cover', direct = false, compressMaxDim, deferPreview = false }: ImageUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
+    const [previewOpen, setPreviewOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    // Com deferPreview, o <img> só entra no DOM depois do clique — é o que evita
+    // o download. Uma imagem recém-enviada já está no navegador, então mostrar
+    // não custa nada e a pessoa precisa ver o que acabou de subir.
+    const showImage = !!value && (!deferPreview || previewOpen);
 
     const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const original = event.target.files?.[0];
@@ -88,11 +101,21 @@ export function ImageUpload({ value, onUploadSuccess, className = '', path = 'pr
                     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
                     { auth: { persistSession: false, autoRefreshToken: false } },
                 );
+                // cacheControl é OBRIGATÓRIO aqui: diferente do upload() multipart,
+                // o uploadToSignedUrl não tem padrão — sem ele o header sai como
+                // `max-age=undefined`, que é inválido, e o objeto deixa de entrar
+                // no CDN (CF-Cache-Status: MISS) e no cache do navegador. Foi assim
+                // que 407MB de fotos de patrimônio passaram a ser rebaixadas
+                // inteiras a cada abertura de ficha em ago/2026.
                 const { error } = await sb.storage
                     .from('images')
-                    .uploadToSignedUrl(storagePath, token, file, { contentType: file.type });
+                    .uploadToSignedUrl(storagePath, token, file, {
+                        contentType: file.type,
+                        cacheControl: UPLOAD_CACHE_CONTROL,
+                    });
                 if (error) throw error;
 
+                setPreviewOpen(true);
                 onUploadSuccess(publicUrl);
                 toast.success('Imagem enviada com sucesso!');
                 return;
@@ -115,6 +138,7 @@ export function ImageUpload({ value, onUploadSuccess, className = '', path = 'pr
             }
 
             const result = await response.json();
+            setPreviewOpen(true);
             onUploadSuccess(result.url);
             toast.success('Imagem enviada com sucesso!');
         } catch (error: any) {
@@ -137,7 +161,7 @@ export function ImageUpload({ value, onUploadSuccess, className = '', path = 'pr
                 className="hidden"
             />
 
-            {value ? (
+            {showImage ? (
                 <>
                     <img src={value} alt="Preview" className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
                     <div
@@ -146,6 +170,26 @@ export function ImageUpload({ value, onUploadSuccess, className = '', path = 'pr
                     >
                         {isUploading ? <Loader2 className="w-8 h-8 text-white animate-spin" /> : <Camera className="w-8 h-8 text-white" />}
                     </div>
+                </>
+            ) : value ? (
+                <>
+                    <button
+                        type="button"
+                        onClick={() => setPreviewOpen(true)}
+                        className="flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors w-full h-full"
+                        title="A foto é pesada — carrega só quando você pede"
+                    >
+                        <ImageIcon className="w-7 h-7" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">Ver foto</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        title="Trocar imagem"
+                        className="absolute top-1.5 right-1.5 p-1.5 rounded-lg bg-background/80 border border-border text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+                    </button>
                 </>
             ) : (
                 <button

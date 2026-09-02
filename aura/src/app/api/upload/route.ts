@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { clientIp, isRateLimited, logAttempt } from '@/lib/login-attempts';
+import { UPLOAD_CACHE_CONTROL } from '@/lib/upload-cache';
 
 const ALLOWED_MIME_TYPES = [
     'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
@@ -124,6 +125,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             .from('images')
             .upload(filePath, buffer, {
                 contentType: file.type,
+                cacheControl: UPLOAD_CACHE_CONTROL,
                 upsert: false
             });
 
