@@ -1,15 +1,22 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Dialog } from "@/components/aura/Dialog";
-import { useIsMobile } from "@/components/aura/hooks";
-import { useRouter } from "next/navigation";
+import { useIsMobile, useMounted } from "@/components/aura/hooks";
+import { useOverlayRoot } from "@/components/aura/OverlayProvider";
+import { useRouter, usePathname } from "next/navigation";
 import { Bell, MessageSquare, ShoppingBag, Calendar, X, ChevronRight } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { useProperty } from "@/context/PropertyContext";
 import { useNotifications } from "@/context/NotificationContext";
 import { useAuth } from "@/context/AuthContext";
-import { NOTIFICATION_VISIBLE_ROLES, NOTIFICATION_ALERT_ROLES, hasAnyRole } from "@/lib/notifications";
+import { StructureService } from "@/services/structure-service";
+import { UrgentAlertCard, type UrgentItem } from "@/components/admin/UrgentAlertCard";
+import {
+  NOTIFICATION_VISIBLE_ROLES, NOTIFICATION_ALERT_ROLES, hasAnyRole,
+  URGENT_REMIND_MS, URGENT_SUPPRESS_MS, URGENT_SUPPRESS_KEY,
+} from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -33,11 +40,16 @@ interface ConciergeNotif {
   cabinName?: string;
   notes?: string;
   createdAt: string;
+  /** Só pedido do HÓSPEDE vai para o card que incomoda; o da camareira segue no sino. */
+  requestedBy?: 'guest' | 'maid';
 }
 
 interface BookingNotif {
   id: string;
+  structureId: string;
   structureName: string;
+  /** Necessário para aprovar/recusar direto do card (dispara a faxina de virada). */
+  requiresTurnover: boolean;
   startTime: string;
   endTime: string;
   date: string;
@@ -92,9 +104,6 @@ function fireBrowserNotification(
   } catch { /* ignore */ }
 }
 
-// Intervalo do re-alerta de concierge enquanto houver pendentes (canal veemente)
-const CONCIERGE_REMIND_MS = 2 * 60_000;
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function NotificationCenter() {
@@ -102,12 +111,17 @@ export function NotificationCenter() {
   const { counts, refetch: refetchNotifCounts } = useNotifications();
   const { userData } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = createClientBrowser();
   const panelRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [open, setOpen] = useState(false);
   const isMobile = useIsMobile();
+  // O card é `position: fixed`, mas a topbar tem backdrop-filter — que vira bloco
+  // de contenção e prenderia o fixed dentro dela. Por isso vai de portal.
+  const mounted = useMounted();
+  const overlayRoot = useOverlayRoot();
   const [whatsapp, setWhatsapp] = useState<WhatsAppNotif[]>([]);
   const [concierge, setConcierge] = useState<ConciergeNotif[]>([]);
   const [bookings, setBookings] = useState<BookingNotif[]>([]);
@@ -127,10 +141,6 @@ export function NotificationCenter() {
   const bookingsBuffer = useRef<BookingNotif[]>([]);
   const bookingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSoundAt = useRef(0);
-
-  // Lista viva para o loop de re-alerta (sem reiniciar o timer a cada fetch)
-  const conciergeRef = useRef<ConciergeNotif[]>([]);
-  conciergeRef.current = concierge;
 
   const propertyId = property?.id;
 
@@ -224,33 +234,25 @@ export function NotificationCenter() {
     }
   }, [playSound, router]);
 
+  // Concierge e agendamento NÃO abrem toast: quem insiste agora é o card fixo
+  // (UrgentAlertCard), que fica na tela até alguém resolver. O flush só cuida do
+  // que o card não alcança — a campainha e a notificação do navegador com a aba
+  // escondida. Pedido da camareira fica de fora do canal urgente: é trabalho do
+  // mensageiro, e continua contando no sino.
   const flushConcierge = useCallback(() => {
-    const items = conciergeBuffer.current;
+    const items = conciergeBuffer.current.filter(r => r.requestedBy !== 'maid');
     conciergeBuffer.current = [];
     conciergeTimer.current = null;
     if (items.length === 0) return;
 
     playUrgentSound();
 
-    let title: string;
-    let description: string;
-    if (items.length === 1) {
-      const r = items[0];
-      title = `🛎️ Novo pedido de concierge`;
-      description = `${r.quantity}x ${r.itemName}${r.cabinName ? ` — ${r.cabinName}` : ''}`;
-    } else {
-      title = `🛎️ ${items.length} novos pedidos de concierge`;
-      description = 'Toque para ver os pedidos';
-    }
-
-    // Persistente de propósito: pedido de hóspede não pode se perder no meio dos
-    // toasts de mensagem — só sai clicando, atendendo ou zerando a fila.
-    toast.warning(title, {
-      id: 'notif-concierge',
-      description,
-      duration: Infinity,
-      action: { label: 'Atender', onClick: () => router.push('/admin/concierge') },
-    });
+    const title = items.length === 1
+      ? '🛎️ Novo pedido de concierge'
+      : `🛎️ ${items.length} novos pedidos de concierge`;
+    const description = items.length === 1
+      ? `${items[0].quantity}x ${items[0].itemName}${items[0].cabinName ? ` — ${items[0].cabinName}` : ''}`
+      : 'Toque para ver os pedidos';
 
     if (document.visibilityState !== 'visible') {
       fireBrowserNotification(title, description, () => router.push('/admin/concierge'), {
@@ -266,30 +268,22 @@ export function NotificationCenter() {
     bookingsTimer.current = null;
     if (items.length === 0) return;
 
-    playSound();
+    playUrgentSound();
 
-    let title: string;
-    let description: string;
-    if (items.length === 1) {
-      const b = items[0];
-      title = `📅 Novo agendamento pendente`;
-      description = `${b.structureName}${b.guestName ? ` — ${b.guestName}` : ''}: ${b.startTime}–${b.endTime}`;
-    } else {
-      title = `📅 ${items.length} novos agendamentos`;
-      description = 'Toque para ver os agendamentos';
-    }
-
-    toast.message(title, {
-      id: 'notif-bookings',
-      description,
-      duration: 8000,
-      action: { label: 'Ver', onClick: () => router.push('/admin/estruturas/bookings') },
-    });
+    const title = items.length === 1
+      ? '📅 Novo agendamento pendente'
+      : `📅 ${items.length} novos agendamentos`;
+    const description = items.length === 1
+      ? `${items[0].structureName}${items[0].guestName ? ` — ${items[0].guestName}` : ''}: ${items[0].startTime}–${items[0].endTime}`
+      : 'Toque para ver os agendamentos';
 
     if (document.visibilityState !== 'visible') {
-      fireBrowserNotification(title, description, () => router.push('/admin/estruturas/bookings'));
+      fireBrowserNotification(title, description, () => router.push('/admin/estruturas/bookings'), {
+        tag: 'aura-booking',
+        requireInteraction: true,
+      });
     }
-  }, [playSound, router]);
+  }, [playUrgentSound, router]);
 
   // ─── Fetch functions ────────────────────────────────────────────────────────
 
@@ -351,7 +345,7 @@ export function NotificationCenter() {
     if (!propertyId) return;
     const { data } = await supabase
       .from('concierge_requests')
-      .select('id, itemId, quantity, cabinId, notes, createdAt')
+      .select('id, itemId, quantity, cabinId, notes, createdAt, requestedBy')
       .eq('propertyId', propertyId)
       .eq('status', 'pending')
       .order('createdAt', { ascending: true })
@@ -377,6 +371,7 @@ export function NotificationCenter() {
       cabinName: cabinMap[r.cabinId] || undefined,
       notes: r.notes || undefined,
       createdAt: r.createdAt,
+      requestedBy: r.requestedBy,
     }));
 
     if (initialized.current && canAlert && enriched.length > prevConciergeCount.current) {
@@ -404,13 +399,15 @@ export function NotificationCenter() {
     if (!data) return;
 
     const structureIds = Array.from(new Set(data.map((b: any) => b.structureId).filter(Boolean)));
-    let structureMap: Record<string, string> = {};
+    // `requiresTurnover` vem junto porque o card aprova/recusa sem passar pela
+    // página da agenda — e aprovar sem ele deixaria a faxina de virada para trás.
+    let structureMap: Record<string, { name: string; requiresTurnover: boolean }> = {};
     if (structureIds.length) {
       const { data: structures } = await supabase
         .from('structures')
-        .select('id, name')
+        .select('id, name, requiresTurnover')
         .in('id', structureIds);
-      structureMap = Object.fromEntries((structures || []).map((s: any) => [s.id, s.name]));
+      structureMap = Object.fromEntries((structures || []).map((s: any) => [s.id, { name: s.name, requiresTurnover: !!s.requiresTurnover }]));
     }
 
     const stayIds = Array.from(new Set(data.filter((b: any) => b.stayId && !b.guestName).map((b: any) => b.stayId)));
@@ -427,7 +424,9 @@ export function NotificationCenter() {
 
     const enriched = data.map((b: any) => ({
       id: b.id,
-      structureName: structureMap[b.structureId] || 'Estrutura',
+      structureId: b.structureId,
+      structureName: structureMap[b.structureId]?.name || 'Estrutura',
+      requiresTurnover: structureMap[b.structureId]?.requiresTurnover ?? false,
       startTime: b.startTime,
       endTime: b.endTime,
       date: b.date,
@@ -462,48 +461,127 @@ export function NotificationCenter() {
     requestBrowserPermission();
   }, [canAlert]);
 
-  // ─── Re-alerta de concierge: enquanto houver pendente, relembra a cada 2 min ──
-  // Toast persistente + campainha + notificação do navegador (aba oculta). Pausa
-  // quando o balcão já está na tela de concierge.
+  // ─── Canal urgente: card fixo + campainha a cada 2 min ──────────────────────
+  // A fila do card é pedido de concierge do HÓSPEDE + reserva de estrutura
+  // pendente — o que não pode esperar. Some sozinho quando alguém resolve (o
+  // realtime derruba o item) e enquanto a recepção já está na página do assunto:
+  // insistir por cima da tela onde a pessoa está trabalhando seria só ruído.
 
-  const hasConcierge = concierge.length > 0;
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const [suppress, setSuppress] = useState<{ until: number; ids: string[] } | null>(null);
+  const [busyBooking, setBusyBooking] = useState<string | null>(null);
 
+  // O silêncio é da pessoa, não da aba — sobrevive ao F5.
   useEffect(() => {
-    if (!canAlert) return;
-    if (!hasConcierge) {
-      toast.dismiss('notif-concierge');
-      return;
+    try {
+      const raw = localStorage.getItem(URGENT_SUPPRESS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { until: number; ids: string[] };
+      if (parsed?.until > Date.now()) setSuppress(parsed);
+      else localStorage.removeItem(URGENT_SUPPRESS_KEY);
+    } catch { /* ignore */ }
+  }, []);
+
+  const urgentItems = useMemo<UrgentItem[]>(() => {
+    const onConciergePage = pathname?.startsWith('/admin/concierge') ?? false;
+    const onBookingsPage = pathname?.startsWith('/admin/estruturas/bookings') ?? false;
+    const fromConcierge: UrgentItem[] = onConciergePage ? [] : concierge
+      .filter(r => r.requestedBy !== 'maid')
+      .map(r => ({
+        id: r.id,
+        kind: 'concierge',
+        title: r.cabinName || 'Pedido do hóspede',
+        detail: `${r.quantity}x ${r.itemName}${r.notes ? ` · ${r.notes}` : ''}`,
+        createdAt: r.createdAt,
+      }));
+    const fromBookings: UrgentItem[] = onBookingsPage ? [] : bookings.map(b => ({
+      id: b.id,
+      kind: 'booking',
+      title: b.structureName,
+      detail: `${b.guestName ? b.guestName + ' · ' : ''}${b.startTime}–${b.endTime} · ${formatDate(b.date)}`,
+      createdAt: b.createdAt,
+    }));
+    return [...fromConcierge, ...fromBookings].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }, [concierge, bookings, pathname]);
+
+  const urgentRef = useRef<UrgentItem[]>([]);
+  urgentRef.current = urgentItems;
+  const suppressRef = useRef<{ until: number; ids: string[] } | null>(null);
+  suppressRef.current = suppress;
+  /** Marca que o card saiu por supressão — para ele voltar tocando, não mudo. */
+  const ringOnReturn = useRef(false);
+
+  // "Suprimir 5 min" cala só o que JÁ estava na fila: pedido novo fura o silêncio.
+  const silenced = !!suppress && nowTick < suppress.until && urgentItems.every(i => suppress.ids.includes(i.id));
+  const cardVisible = canAlert && urgentItems.length > 0 && !silenced;
+
+  // Relógio do card ("espera há X min") e vencimento do silêncio.
+  useEffect(() => {
+    if (!canAlert || urgentItems.length === 0) return;
+    setNowTick(Date.now());
+    const id = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [canAlert, urgentItems.length]);
+
+  // Insistência: campainha a cada 2 min enquanto o card estiver na tela.
+  useEffect(() => {
+    if (!cardVisible) return;
+    // Voltou dos 5 minutos: toca. Se quem furou o silêncio foi um pedido novo, o
+    // alerta de chegada já tocou — não toca duas vezes.
+    if (ringOnReturn.current) {
+      ringOnReturn.current = false;
+      if (suppressRef.current && Date.now() >= suppressRef.current.until) playUrgentSound();
     }
-
-    const interval = setInterval(() => {
-      const items = conciergeRef.current;
+    const id = setInterval(() => {
+      const items = urgentRef.current;
       if (items.length === 0) return;
-      if (window.location.pathname.startsWith('/admin/concierge')) return;
-
-      const oldest = items[0]; // fetch ordena por createdAt asc
-      const waitedMin = Math.max(1, Math.round((Date.now() - new Date(oldest.createdAt).getTime()) / 60_000));
-      const title = items.length === 1
-        ? '🛎️ Pedido de concierge aguardando'
-        : `🛎️ ${items.length} pedidos de concierge aguardando`;
-      const description = `O mais antigo espera há ${waitedMin} min. Toque para atender.`;
-
+      const oldest = items[0];
+      const waited = Math.max(1, Math.round((Date.now() - new Date(oldest.createdAt).getTime()) / 60_000));
       playUrgentSound();
-      toast.warning(title, {
-        id: 'notif-concierge',
-        description,
-        duration: Infinity,
-        action: { label: 'Atender', onClick: () => router.push('/admin/concierge') },
-      });
+      setNowTick(Date.now());
       if (document.visibilityState !== 'visible') {
-        fireBrowserNotification(title, description, () => router.push('/admin/concierge'), {
-          tag: 'aura-concierge',
+        const title = items.length === 1 ? '🛎️ Hóspede aguardando' : `🛎️ ${items.length} pedidos aguardando`;
+        fireBrowserNotification(title, `O mais antigo espera há ${waited} min.`, () => router.push(items[0].kind === 'concierge' ? '/admin/concierge' : '/admin/estruturas/bookings'), {
+          tag: 'aura-urgent',
           requireInteraction: true,
         });
       }
-    }, CONCIERGE_REMIND_MS);
+    }, URGENT_REMIND_MS);
+    return () => clearInterval(id);
+  }, [cardVisible, playUrgentSound, router]);
 
-    return () => clearInterval(interval);
-  }, [canAlert, hasConcierge, playUrgentSound, router]);
+  const suppressUrgent = useCallback(() => {
+    const payload = { until: Date.now() + URGENT_SUPPRESS_MS, ids: urgentRef.current.map(i => i.id) };
+    setSuppress(payload);
+    setNowTick(Date.now());
+    ringOnReturn.current = true;
+    try { localStorage.setItem(URGENT_SUPPRESS_KEY, JSON.stringify(payload)); } catch { /* ignore */ }
+    toast.message('Alerta silenciado por 5 minutos.', {
+      description: 'Pedido novo volta a avisar na hora.',
+      duration: 4000,
+    });
+  }, []);
+
+  // Aprovar/recusar direto do card — mesmo caminho da agenda (automação de
+  // confirmação ao hóspede e faxina de virada saem daqui do mesmo jeito).
+  const decideBooking = useCallback(async (id: string, status: 'approved' | 'rejected') => {
+    const b = bookings.find(x => x.id === id);
+    if (!b || !propertyId || !userData) return;
+    setBusyBooking(id);
+    try {
+      await StructureService.updateBookingStatus(
+        propertyId, id, status, userData.id, userData.fullName, b.requiresTurnover, b.structureId
+      );
+      setBookings(prev => prev.filter(x => x.id !== id));
+      prevBookingsCount.current = Math.max(0, prevBookingsCount.current - 1);
+      refetchNotifCounts();
+      toast.success(status === 'approved' ? 'Reserva aprovada.' : 'Reserva recusada.');
+    } catch {
+      toast.error('Não foi possível atualizar a reserva.');
+    } finally {
+      setBusyBooking(null);
+    }
+  }, [bookings, propertyId, userData, refetchNotifCounts]);
 
   // ─── Cleanup dos timers de coalescência ─────────────────────────────────────
 
@@ -591,19 +669,24 @@ export function NotificationCenter() {
   const handleOpen = () => setOpen(prev => !prev);
 
   // ─── Badge count ────────────────────────────────────────────────────────────
-  // WhatsApp entra como UMA notificação agregada ("N novas mensagens"), para o
-  // volume de mensagens não afogar concierge e agendamentos no sino.
+  // Mensagem de WhatsApp NÃO entra no badge: com ~325 recebidas por dia o sino
+  // vivia marcado e escondia o que era urgente. Ela aparece no menu lateral
+  // (Comunicação), dentro do painel e — no sino — como um ponto apagado sem
+  // número. O badge âmbar é só de pendência que exige ação: concierge e agenda.
 
   const waCount = Math.max(counts.messages, whatsapp.length);
-  const total = (waCount > 0 ? 1 : 0) + concierge.length + bookings.length;
+  const actionable = concierge.length + bookings.length;
+  const total = (waCount > 0 ? 1 : 0) + actionable;
 
-  // ─── Tab blinking when there are unread notifications ───────────────────────
+  // ─── Tab blinking ───────────────────────────────────────────────────────────
+  // Só urgência mexe no título da aba. Mensagem não lida não pisca — era o que
+  // gastava o sinal de alarme com o que pode esperar.
 
   useEffect(() => {
-    if (total === 0 || !canAlert) return;
+    if (actionable === 0 || !canAlert) return;
 
     const originalTitle = document.title;
-    const alertTitle = `(${total}) Notificações — Aura`;
+    const alertTitle = `(${actionable}) ${actionable === 1 ? 'pedido' : 'pedidos'} aguardando — Aura`;
     let blinkState = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -641,7 +724,7 @@ export function NotificationCenter() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       stopBlinking();
     };
-  }, [total, canAlert]);
+  }, [actionable, canAlert]);
 
   // ─── Navigate helpers ───────────────────────────────────────────────────────
 
@@ -654,9 +737,12 @@ export function NotificationCenter() {
 
   const waConvCount = new Set(whatsapp.map(m => m.contactId || m.id)).size;
   const waNames = Array.from(new Set(whatsapp.map(m => m.cabinName).filter(Boolean))) as string[];
+  // O painel é o único lugar onde a mensagem aparece com número: "N novas
+  // mensagens · há X min · Z conversas — toque para abrir".
+  const waConvLabel = `${waConvCount}${whatsapp.length >= 20 ? '+' : ''} conversa${waConvCount !== 1 ? 's' : ''}`;
   const waSubtitle = waNames.length > 0
-    ? `${waNames.slice(0, 2).join(', ')}${waConvCount > 2 ? ` e mais ${waConvCount - 2} conversa${waConvCount - 2 > 1 ? 's' : ''}` : ''}`
-    : `${waConvCount}${whatsapp.length >= 20 ? '+' : ''} conversa${waConvCount !== 1 ? 's' : ''} — toque para abrir`;
+    ? `${waNames.slice(0, 2).join(', ')}${waConvCount > 2 ? ` +${waConvCount - 2}` : ''} · ${waConvLabel} — toque para abrir`
+    : `${waConvLabel} — toque para abrir`;
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -747,23 +833,19 @@ export function NotificationCenter() {
         )}
         title="Notificações"
       >
-        <Bell size={18} className={cn(total > 0 && !open && "animate-[wiggle_1s_ease-in-out_infinite]")} />
-        {total > 0 && (
-          <>
-            {/* Ping ring — laranja quando há concierge esperando (prioridade do balcão) */}
-            <span className="absolute -top-1 -right-1 flex h-[18px] w-[18px]">
-              <span className={cn(
-                "animate-ping absolute inline-flex h-full w-full rounded-full opacity-60",
-                concierge.length > 0 ? "bg-orange-500" : "bg-red-500"
-              )} />
-              <span className={cn(
-                "relative inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-white text-[10px] font-black rounded-full leading-none",
-                concierge.length > 0 ? "bg-orange-500" : "bg-red-500"
-              )}>
-                {total > 99 ? '99+' : total}
-              </span>
+        <Bell size={18} className={cn(actionable > 0 && !open && "animate-[wiggle_1s_ease-in-out_infinite]")} />
+        {/* Âmbar (identidade do sistema) e só para o que exige ação. */}
+        {actionable > 0 && (
+          <span className="absolute -top-1 -right-1 flex h-[18px] w-[18px]">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-60" />
+            <span className="relative inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-amber-500 text-white text-[10px] font-black rounded-full leading-none">
+              {actionable > 99 ? '99+' : actionable}
             </span>
-          </>
+          </span>
+        )}
+        {/* Só mensagem não lida: ponto apagado, sem número e sem alarme. */}
+        {actionable === 0 && waCount > 0 && (
+          <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-foreground/40" />
         )}
       </button>
 
@@ -809,6 +891,21 @@ export function NotificationCenter() {
       >
         {panelBody}
       </Dialog>
+
+      {/* Card de urgência — canal próprio de pedido do hóspede / agendamento */}
+      {mounted && cardVisible && createPortal(
+        <UrgentAlertCard
+          items={urgentItems}
+          now={nowTick}
+          busyId={busyBooking}
+          onOpenConcierge={() => goTo('/admin/concierge')}
+          onOpenBooking={() => goTo('/admin/estruturas/bookings')}
+          onApprove={id => decideBooking(id, 'approved')}
+          onReject={id => decideBooking(id, 'rejected')}
+          onSuppress={suppressUrgent}
+        />,
+        overlayRoot ?? document.body
+      )}
     </div>
   );
 }

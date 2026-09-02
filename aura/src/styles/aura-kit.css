@@ -424,6 +424,18 @@
 .ak-toast-desc { color: var(--t-muted) !important; font-size: 12px !important; }
 .ak-toast-action { background: linear-gradient(135deg, #9b6dff, #4ec9d4) !important; color: #fff !important; font-weight: 800 !important; border-radius: 8px !important; }
 
+/* ── Card de urgência do balcão (UrgentAlertCard) ───────────────────────────── */
+/* Não bloqueia a tela de propósito: a recepção precisa terminar o check-in que
+   está fazendo. O que incomoda é a PERMANÊNCIA — o card só sai quando alguém
+   resolve o pedido ou pede 5 minutos de silêncio. Fica abaixo dos overlays
+   (um Dialog aberto tem prioridade) e acima de tudo o resto. */
+.ak-urgent { position: fixed; right: 16px; bottom: 16px; width: min(380px, calc(100vw - 32px)); z-index: calc(var(--z-overlay) - 5); background: var(--t-elev); border: 1px solid var(--t-amber-border); border-radius: 16px; box-shadow: 0 16px 48px rgba(0, 0, 0, .5); overflow: hidden; animation: ak-pop var(--dur-2) var(--ease-out) backwards; }
+.aura-admin-root[data-theme="light"] .ak-urgent { box-shadow: 0 16px 40px rgba(30, 37, 48, .22); }
+.ak-urgent::after { content: ""; position: absolute; inset: 0; border-radius: 16px; pointer-events: none; box-shadow: inset 0 0 0 2px var(--t-amber); animation: ak-urgent-glow 2s var(--ease-std) infinite; }
+@keyframes ak-urgent-glow { 0%, 100% { opacity: .1; } 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .ak-urgent::after { animation: none; opacity: .3; } }
+@media (max-width: 1023px) { .ak-urgent { left: 12px; right: 12px; width: auto; bottom: calc(var(--tabbar-h) + 12px); } }
+
 /* ── Sidebar nav (hover por CSS; o estilo ativo é inline) ──────────────────── */
 .ak-nav-item { -webkit-tap-highlight-color: transparent; }
 @media (hover: hover) {

@@ -95,7 +95,16 @@ Several channels, kept in services:
 - **Chatwoot** — support inbox + SSO (`/api/chatwoot/*`).
 - **Web Push** — VAPID via the `web-push` lib (`src/lib/push-server.ts`) + Firebase FCM;
   subscribe/send under `/api/push/*`, client manager in `PushNotificationManager`.
-- **In-app** — `NotificationContext` + notification center.
+- **In-app** — `NotificationContext` + notification center, em **dois níveis** (09/2026). A
+  régua é "isto pode esperar?", e o roteamento por cargo vive em `src/lib/notifications.ts`:
+  - **Urgente** (pedido de concierge do hóspede, reserva de estrutura pendente): card fixo
+    `UrgentAlertCard` na tela da recepção + campainha a cada 2 min + badge âmbar no sino +
+    título da aba piscando. Fica até alguém resolver; "Suprimir por 5 min" cala só o que já
+    estava na fila (pedido novo fura o silêncio). Agendamento aprova/recusa no próprio card.
+  - **Passivo** (mensagem de WhatsApp): toast e som na chegada, contador no menu lateral e no
+    painel do sino — **sem badge com número e sem piscar a aba**. Com ~9.800 mensagens
+    recebidas em 30 dias contra 8 pedidos de hóspede, tudo no mesmo badge deixava o sino
+    permanentemente marcado e escondia o urgente.
 
 ## File uploads
 
