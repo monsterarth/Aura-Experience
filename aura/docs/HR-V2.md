@@ -528,9 +528,19 @@ registradas em `migrations/README.md`.
 
 ### Provas rodadas, não afirmadas
 
+> **A primeira versão desta seção afirmava "zero divergências em 6.935 dias-pessoa" — e a prova
+> era CEGA.** Ela rodou depois de a própria migration ter esvaziado `staff_schedule_checkpoints`,
+> então os dois motores caíam no mesmo fallback e o defeito que existia ali era invisível para
+> ela. Uma revisão adversarial dos commits encontrou isso. A prova foi refeita com os 11
+> checkpoints reais lidos de produção, e o número abaixo é o da versão que enxerga o caso.
+>
+> A lição vale além deste doc: **prova de equivalência não pode rodar depois da migração que
+> destrói um dos lados.**
+
 - **O motor novo reproduz o velho: zero divergências em 6.935 dias-pessoa** (19 pessoas × 365
-  dias, sobre os dados reais migrados do DEV). O arreio comparou `resolveDay` contra
-  `calculateScheduleForDate` dia a dia.
+  dias), com os checkpoints alimentando o calculador antigo. O mesmo arreio, rodado SEM os
+  checkpoints, dá 834 divergências — Rodrigo e Romina em 365 de 365 dias cada, mais 26 em cada
+  um dos quatro 6x1 — que é exatamente o defeito que a versão anterior deixou passar.
 - **A invariante do ajuste manual está de pé.** Um dia marcado como `manual` no banco, cron
   rodado em seguida: `gravados: 1546, preservados: 1`, e a linha ficou intacta.
 - **O gate de módulo funciona no cron**: 2 propriedades puladas, 1 processada.
@@ -601,3 +611,51 @@ Todos consertados junto, nenhum era do escopo:
 2. Deploy da branch.
 3. Rodar `/api/cron/rh-materialize` uma vez à mão para gerar o trimestre.
 4. Conferir a grade de setembro em `/admin/rh` e publicar o mês.
+
+
+---
+
+## 11. Revisão adversarial dos commits (03/09/2026)
+
+Seis lentes independentes sobre o diff dos seis primeiros commits, cada achado passando por
+dois céticos instruídos a REFUTAR. **26 achados brutos, 15 confirmados, 11 refutados** — os 15
+são 11 defeitos distintos, alguns encontrados por mais de uma lente.
+
+Todos consertados no mesmo dia (commit `1bea4d4`, mais `8d90ae0` e `a58abe7`, que eu mesmo
+achei antes).
+
+| # | Defeito | Onde |
+|---|---|---|
+| 1 | **A migration lia o `cycleReferenceDate` do jsonb e ignorava o checkpoint** — que é quem vence, e que ela apagava no mesmo script. 9 das 19 pessoas; Rodrigo e Romina com a paridade do 12x36 invertida em todos os dias | `hr_fatia1_modelo.sql` |
+| 2 | Salvar a jornada fazia UPDATE na vigência atual em vez de criar uma nova: histórico nunca acumulava, e o começo do mês virava folga | `hr-service.ts` · `PadraoDialog.tsx` |
+| 3 | Salvar apagava `weekdayTimeOverrides` (o domingo do Davi caía de 8h para 4h, sem aviso e sem desfazer) | `PadraoDialog.tsx` |
+| 4 | Replicar copiava o mês inteiro como `manual`, trazendo férias antigas e **congelando o mês contra qualquer ausência futura** | `hr-service.ts` |
+| 5 | Ausência para quem não tem jornada materializava o trimestre inteiro como folga | `hr-service.ts` |
+| 6 | Apagar a ausência deixava os dias no banco para sempre | `hr-service.ts` |
+| 7 | Gerar um mês anterior à vigência gravava a equipe toda folgando | `hr-service.ts` |
+| 8 | `section=padroes` com `staffId` lia jornada de outra propriedade | `api/admin/rh/route.ts` |
+| 9 | O gate do `meu-dia` olhava só o cargo primário e barrava as 3 governantas de cargo secundário | `api/rh/meu-dia/route.ts` |
+| 10 | "Próxima folga" apontava **amanhã** para as 17 pessoas sem jornada | `ProfileView.tsx` |
+| 11 | O rótulo da escala no perfil lia `staff.scheduleType`, coluna que ninguém mais escreve | `ProfileView.tsx` |
+| 12 | Replicar deixava os últimos 2–3 dias do mês sem cópia | `hr-service.ts` |
+| 13 | O clique na aba Ponto disputava com a própria navegação | `admin/rh/page.tsx` |
+
+### O que essa rodada ensinou sobre o próprio método
+
+Dois dos defeitos (1 e 12) são do mesmo tipo: **uma conta que parece certa e que a prova
+existente não conseguia enxergar**. A prova de equivalência rodava sobre um banco onde a
+migration já tinha apagado o outro lado; a de replicação nunca foi escrita. Nos dois casos o
+código estava comentado com confiança, e o comentário não é prova.
+
+O padrão que funcionou: comparar os dois motores dia a dia sobre o **dado real**, e rodar a
+comparação também na configuração em que ela deveria FALHAR. Se a prova não sabe falhar, ela
+não está provando nada.
+
+### Reprovado no DEV depois dos consertos
+
+- Equivalência com checkpoints: **0 divergências**; sem eles, **834** (a prova enxerga o caso).
+- Ausência para quem não tem jornada: **1 linha** gravada, não 92.
+- Apagar essa ausência: `apagados: 1`, zero linhas fantasma.
+- Ajuste manual: `preservados: 1`, linha intacta.
+- Zero linhas com `note = 'Sem padrão'` no banco.
+- Replicação: 0 dias sem cópia e 0 dias da semana trocados nos cinco pares que quebravam.
