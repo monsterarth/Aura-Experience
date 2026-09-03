@@ -162,7 +162,10 @@ export default function RhPage() {
                 ...(pontoOn ? [{ id: "ponto" as Tab, label: "Ponto", icon: Clock, href: "/admin/ponto" }] : []),
               ]}
               value={tab}
-              onChange={setTab}
+              // A aba do Ponto é um link para outra rota, e o kit dispara
+              // `onChange` junto com o `href`. Sem esta guarda, o router.replace
+              // da aba corre com a navegação do link e o clique fica indeciso.
+              onChange={id => { if ((TABS as readonly string[]).includes(id)) setTab(id); }}
               ariaLabel="Seções de Gente"
             />
           }
