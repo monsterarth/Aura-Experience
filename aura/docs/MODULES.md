@@ -36,7 +36,8 @@ are admin/manager (+ the relevant operational role).
 | `surveys` (`new`, `edit`, `curated`, `responses`, `area-reviews`) | `survey-service` | Guest surveys (Survey 2.0) + area reviews |
 | `comunicacao` (`automations`, `automations/settings`) | `automation-service`, `chatwoot-service`, `message-queue-service` | Automated messaging, templates, WhatsApp |
 | `staff` · `hr` | `staff-service` | Staff records, HR |
-| `escalas` (+`mensal`) | `staff-service` (schedules) | Work schedules / shifts |
+| `rh` | `hr-service` | **Gente** (modulo `rh`): grade do mes materializada, jornadas, ausencias. Abas Escala/Jornadas/Ausencias, com Ponto apontando para `/admin/ponto`. Gate de modulo POR ABA -- e `ROLE_HOME` de admin e manager, entao guard de pagina daria loop de login |
+| `escalas` (+`mensal`) | -- | **Redirect** para `/admin/rh?tab=escala` desde 03/09/2026 |
 | `perfil` (`configuracoes`, `[staffId]`) | `staff-service` | User profile + settings |
 | `changelog` | `changelog-service` | Product changelog editor |
 | `logs` | `audit-service` | Audit log viewer |
