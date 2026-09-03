@@ -19,6 +19,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
+import { RateService } from "./rate-service";
 import {
   offeredTotal, resolveRoomValue, roomDisplayName, MsgLang, DEFAULT_PAYMENT_OPTIONS,
   paymentLabel, paymentTotal,
@@ -120,6 +121,15 @@ export type PublicQuoteView = {
    * do próprio ProposalClient — aqui só decide SE ele aparece.
    */
   overCapacityNotice: boolean;
+  /**
+   * Cabanas LIVRES por categoria no período da proposta — o teto de vezes que
+   * a mesma categoria pode ser escolhida entre as acomodações (a Fazenda tem
+   * duas Bem Estar 2: três acomodações não podem escolher as três). Só as
+   * categorias oferecidas saem daqui; a ocupação do resto do parque não é
+   * assunto do cliente. Categoria ausente = sem teto. Conferido de novo no
+   * aceite, com a ocupação daquele instante.
+   */
+  unitsFree: Record<string, number>;
   property: {
     id: string;
     name: string;
@@ -510,14 +520,28 @@ export const RateQuotePublicService = {
       .map((o) => ({ id: o.id, label: paymentLabel(o, language), discountPct: Number(o.discountPct) || 0 }))
       .filter((o) => o.label);
 
-    const [{ data: property }, wedding] = await Promise.all([
+    const [{ data: property }, wedding, availability] = await Promise.all([
       supabaseAdmin
         .from("properties")
         .select("id, name, logoUrl, theme, settings")
         .eq("id", q.propertyId)
         .maybeSingle(),
       loadWedding(q),
+      // Período TOTAL do pedido. Com chegadas escalonadas isso é conservador
+      // (duas acomodações em datas disjuntas poderiam usar a mesma cabana),
+      // mas nunca deixa vender a mais. Falhou a consulta: sem teto, como era.
+      RateService.getCategoryAvailability(q.propertyId, q.checkIn, q.checkOut).catch(() => null),
     ]);
+
+    const unitsFree: Record<string, number> = {};
+    if (availability) {
+      for (const room of rooms) {
+        for (const c of room.options) {
+          const a = availability[c.categoryId];
+          if (a) unitsFree[c.categoryId] = a.free;
+        }
+      }
+    }
 
     let total = 0;
     let approximate = false;
@@ -581,6 +605,7 @@ export const RateQuotePublicService = {
         maxWeight: Number.isFinite(Number(settings.petMaxWeight)) ? Number(settings.petMaxWeight) : null,
       },
       overCapacityNotice: rooms.some((r) => r.options.some((c) => c.overCapacity)),
+      unitsFree,
       property: {
         id: property?.id ?? q.propertyId,
         name: property?.name ?? "",
@@ -647,6 +672,36 @@ export const RateQuotePublicService = {
       );
       if (!option) return { ok: false, error: "Opção inválida." };
       next.push({ ...room, selectedCategory: option.categoryId || option.category });
+    }
+
+    // Teto de repetição: a mesma categoria escolhida por mais acomodações do
+    // que há cabanas livres é uma reserva que a recepção não consegue honrar
+    // (caso real: três "Bem Estar 2" numa pousada que tem duas). A tela já
+    // impede; aqui é a conferência com a ocupação DESTE instante — a página
+    // pode estar aberta desde ontem. Consulta falhou: passa, como antes.
+    const chosenCount = new Map<string, number>();
+    for (const r of next) {
+      const key = r.selectedCategory!;
+      chosenCount.set(key, (chosenCount.get(key) ?? 0) + 1);
+    }
+    const availability = await RateService
+      .getCategoryAvailability(q.propertyId, q.checkIn, q.checkOut)
+      .catch(() => null);
+    if (availability) {
+      for (const [categoryId, count] of Array.from(chosenCount.entries())) {
+        const a = availability[categoryId];
+        if (!a || count <= a.free) continue;
+        const name = next.flatMap((r) => r.options)
+          .find((c) => c.categoryId === categoryId)?.category ?? "esta cabana";
+        return {
+          ok: false,
+          error: a.free === 0
+            ? `${name} não está mais disponível para essas datas — fale com a pousada.`
+            : a.free === 1
+              ? `Só há 1 cabana ${name} disponível para essas datas — escolha outra opção para uma das acomodações.`
+              : `Só há ${a.free} cabanas ${name} disponíveis para essas datas — escolha outra opção para uma das acomodações.`,
+        };
+      }
     }
 
     const total = next.reduce((s, r) => s + resolveRoomValue(r).value, 0);
