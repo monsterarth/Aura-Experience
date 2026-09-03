@@ -13,9 +13,9 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { SettingRow } from "@/components/ui/SettingRow";
 import { Toggle } from "@/components/ui/Toggle";
 import { isModuleOn } from "@/lib/modules";
-import { Blocks, Boxes, Car, Clock } from "lucide-react";
+import { Blocks, Boxes, Car, Clock, CalendarDays } from "lucide-react";
 
-interface Draft { hasStock: boolean; hasGuarita: boolean; hasTimeclock: boolean }
+interface Draft { hasStock: boolean; hasGuarita: boolean; hasTimeclock: boolean; hasRH: boolean }
 
 export default function ModulosPage() {
   const { isSuperAdmin } = useAuth();
@@ -26,6 +26,7 @@ export default function ModulosPage() {
     hasStock: isModuleOn(p.settings, "estoque"),
     hasGuarita: isModuleOn(p.settings, "guarita"),
     hasTimeclock: isModuleOn(p.settings, "ponto"),
+    hasRH: isModuleOn(p.settings, "rh"),
   }));
 
   if (!draft) return <SkeletonList rows={4} avatar={false} />;
@@ -36,7 +37,9 @@ export default function ModulosPage() {
       ? "Com a Guarita desligada, a página some do menu e o app do porteiro para de responder."
       : !draft.hasTimeclock
         ? "Com o Ponto desligado, o botão de bater ponto some do topo e a página sai do menu. As batidas já registradas ficam guardadas."
-        : undefined;
+        : !draft.hasRH
+          ? "Com Gente desligado, as abas de Escala e Ausências param de responder e o app de campo deixa de mostrar o turno do dia. O cadastro da equipe continua funcionando, e as jornadas já lançadas ficam guardadas."
+          : undefined;
 
   return (
     <div className="max-w-2xl space-y-4">
@@ -72,12 +75,21 @@ export default function ModulosPage() {
         >
           <Toggle checked={draft.hasTimeclock} disabled={!isSuperAdmin} label="Ponto" />
         </SettingRow>
+
+        <SettingRow
+          title="Gente (escala e ausências)"
+          icon={CalendarDays}
+          description="Escala do mês gerada a partir da jornada de cada pessoa, férias, atestado e afastamento, e o turno do dia dentro dos apps de campo. O cadastro da equipe não depende deste módulo."
+          onClick={isSuperAdmin ? () => patch({ hasRH: !draft.hasRH }) : undefined}
+        >
+          <Toggle checked={draft.hasRH} disabled={!isSuperAdmin} label="Gente" />
+        </SettingRow>
       </SectionCard>
 
       {isSuperAdmin && (
         <SaveBar
           dirty={dirty} saving={saving} onReset={reset}
-          onSave={() => save((d) => ({ patch: { hasStock: d.hasStock, hasGuarita: d.hasGuarita, hasTimeclock: d.hasTimeclock } }))}
+          onSave={() => save((d) => ({ patch: { hasStock: d.hasStock, hasGuarita: d.hasGuarita, hasTimeclock: d.hasTimeclock, hasRH: d.hasRH } }))}
           warning={warning}
         />
       )}

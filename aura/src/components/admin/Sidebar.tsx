@@ -216,7 +216,10 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "cabanas",    label: "Cabanas",           icon: Building,         href: "/admin/cabins",          roles: ["super_admin","admin","governance","manager"] },
       { id: "estruturas", label: "Estruturas",         icon: LayoutTemplate,   href: "/admin/estruturas", roles: ["super_admin","admin","manager"] },
       { id: "resort_map", label: "Mapa do Resort",     icon: MapPinned,        href: "/admin/resort-map", roles: ["super_admin","admin","manager"] },
-      { id: "escalas",    label: "Escalas",            icon: ClipboardCheck,   href: "/admin/escalas",         roles: ["super_admin","admin","manager"] },
+      // Absorve as escalas (a rota antiga redireciona). SEM `module: "rh"` de
+      // propósito: a página é destino de login de admin e manager, e o gate mora
+      // por aba lá dentro — esconder o item inteiro tiraria a tela inicial deles.
+      { id: "rh",         label: "Gente",              icon: ClipboardCheck,   href: "/admin/rh",              roles: ["super_admin","admin","manager"] },
       { id: "ponto",      label: "Ponto",              icon: Clock,            href: "/admin/ponto",           roles: ["super_admin","admin","manager","reception","governance","kitchen","marketing","compras","maintenance"], module: "ponto" },
       { id: "logs",       label: "Logs de Auditoria",  icon: FileText,         href: "/admin/logs",            roles: ["super_admin","admin","manager"] },
       { id: "avaliacoes", label: "Avaliações",         icon: Star,             href: "/admin/surveys/responses", roles: ["super_admin","admin","reception","marketing","manager"], exactMatch: true },
