@@ -37,6 +37,7 @@ export function useReceptionLive() {
   const [structureBookings, setStructureBookings] = useState<(StructureBooking & { bookingCabinName?: string | null })[]>([]);
   const [detractors, setDetractors] = useState<any[]>([]);
   const [msgFailures, setMsgFailures] = useState<any[]>([]);
+  const [petExceptions, setPetExceptions] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<ConciergeRequest[]>([]);
   const [breakfastOrders, setBreakfastOrders] = useState<(FBOrder & { cabinName?: string })[]>([]);
   const [breakfastMode, setBreakfastMode] = useState<BreakfastMode>("delivery");
@@ -72,6 +73,7 @@ export function useReceptionLive() {
       setStructureBookings(data.structureBookings ?? []);
       setDetractors(data.detractors ?? []);
       setMsgFailures(data.msgFailures ?? []);
+      setPetExceptions(data.petExceptions ?? []);
       setBreakfastOrders(data.breakfastOrders ?? []);
       todayArrivalsRef.current = data.todayArrivals ?? [];
     } catch {
@@ -172,6 +174,21 @@ export function useReceptionLive() {
     });
 
     const alertItems: AlertItem[] = [
+      // Exceção de pet vem PRIMEIRO: é a única da lista que tem prazo — depois da
+      // chegada do hóspede não há mais o que decidir, só constrangimento no balcão.
+      ...petExceptions.map((p: any) => {
+        const marcas: string[] = [];
+        if (p.inBlackout) marcas.push("período de alta");
+        if (p.overlapping?.length) marcas.push(`já há ${p.overlapping.length} exceção aprovada nestas datas`);
+        const chegada = new Date(p.checkIn);
+        const dias = Math.ceil((chegada.getTime() - currentTime.getTime()) / 86400000);
+        return {
+          id: `pet-${p.stayId}`, type: "pet_exception" as const,
+          title: "Pet fora da política — decisão pendente",
+          desc: `${p.guestName}${p.cabinName ? ` · ${p.cabinName}` : ""} — ${(p.reasons ?? []).join(" · ") || "fora da Política Pet"}.${marcas.length ? ` (${marcas.join("; ")})` : ""}`,
+          time: dias <= 0 ? "chega hoje" : dias === 1 ? "chega amanhã" : `chega em ${dias} dias`,
+        };
+      }),
       ...detractors.map((r, i) => {
         const parts: string[] = [];
         if (r.metrics?.npsScore != null) parts.push(`NPS ${r.metrics.npsScore}/10`);
@@ -195,8 +212,8 @@ export function useReceptionLive() {
       }),
     ].slice(0, 5);
 
-    return { activeTasks, recentlyReleasedCabins, structureAgenda, alertItems };
-  }, [hkTasks, cabins, structures, staffMap, structureBookings, detractors, msgFailures, currentTime]);
+    return { activeTasks, recentlyReleasedCabins, structureAgenda, alertItems, petExceptions };
+  }, [hkTasks, cabins, structures, staffMap, structureBookings, detractors, msgFailures, petExceptions, currentTime]);
 
   return {
     property, loading, error, reload: () => load(false), currentTime,

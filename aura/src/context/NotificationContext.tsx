@@ -12,7 +12,9 @@ interface NotificationCounts {
   /** Alarmes comerciais vencidos/de hoje — badge dos itens do grupo Comercial. */
   crmQuoteAlarms: number;
   crmWeddingAlarms: number;
-  /** Só o operacional de balcão (mensagens+concierge+agendamentos) — alarmes ficam de fora. */
+  /** Pedidos de exceção à Política Pet esperando decisão da recepção. */
+  petExceptions: number;
+  /** Só o operacional de balcão (mensagens+concierge+agendamentos+pet) — alarmes ficam de fora. */
   total: number;
 }
 
@@ -22,7 +24,7 @@ interface NotificationContextValue {
 }
 
 const NotificationContext = createContext<NotificationContextValue>({
-  counts: { messages: 0, concierge: 0, bookings: 0, crmQuoteAlarms: 0, crmWeddingAlarms: 0, total: 0 },
+  counts: { messages: 0, concierge: 0, bookings: 0, crmQuoteAlarms: 0, crmWeddingAlarms: 0, petExceptions: 0, total: 0 },
   refetch: () => {},
 });
 
@@ -36,6 +38,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [bookings, setBookings] = useState(0);
   const [crmQuoteAlarms, setCrmQuoteAlarms] = useState(0);
   const [crmWeddingAlarms, setCrmWeddingAlarms] = useState(0);
+  const [petExceptions, setPetExceptions] = useState(0);
 
   const fetchAll = useCallback(async () => {
     if (!propertyId) return;
@@ -43,7 +46,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // Alarme "devido" = vence hoje ou já venceu (fuso da operação).
     const today = todayPropertyIso();
 
-    const [msgRes, concRes, bookRes, quoteAlarmRes, weddingAlarmRes, overdueInstRes] = await Promise.all([
+    const [msgRes, concRes, bookRes, quoteAlarmRes, weddingAlarmRes, overdueInstRes, petExcRes] = await Promise.all([
       supabase
         .from('messages')
         .select('id', { count: 'exact', head: true })
@@ -86,6 +89,16 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .eq('paid', false)
         .not('dueDate', 'is', null)
         .lte('dueDate', today),
+      // Exceção de pet pendente. Só estadia que ainda não terminou: depois da saída
+      // não há decisão a tomar. Filtro no operador ->> para o índice parcial
+      // idx_stays_pet_exception_status ser alcançável.
+      supabase
+        .from('stays')
+        .select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId)
+        .not('petException', 'is', null)
+        .filter('petException->>status', 'eq', 'pending')
+        .gte('checkOut', today),
     ]);
 
     setMessages(msgRes.count ?? 0);
@@ -94,6 +107,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // Antes das migrations da fase B.5 as tabelas não existem: count null → 0.
     setCrmQuoteAlarms(quoteAlarmRes.count ?? 0);
     setCrmWeddingAlarms((weddingAlarmRes.count ?? 0) + (overdueInstRes.count ?? 0));
+    // Antes da migration a coluna não existe: count null → 0, sem quebrar o sino.
+    setPetExceptions(petExcRes.count ?? 0);
   }, [propertyId, supabase]);
 
   useEffect(() => {
@@ -135,6 +150,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     // Sem filtro por propertyId (a tabela não tem a coluna) — volume é baixo
     // e o fetchAll refaz a conta certa de qualquer jeito.
+    // Sem canal de realtime em `stays`: a tabela muda o tempo todo (fólio, status,
+    // faxina) e cada evento custaria as 7 contagens do fetchAll. Exceção de pet
+    // aparece poucas vezes por mês e tem dias de prazo — a contagem se atualiza no
+    // próximo fetchAll, que os outros canais disparam com sobra. O egresso do plano
+    // free já estourou uma vez por tráfego de realtime (ver docs/CLEANUP.md).
     const installmentsChannel = supabase
       .channel(`notifctx_wedding_installments_${propertyId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'wedding_installments' }, fetchAll)
@@ -155,7 +175,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     bookings,
     crmQuoteAlarms,
     crmWeddingAlarms,
-    total: messages + concierge + bookings,
+    petExceptions,
+    // Entra no badge operacional, não no canal urgente: é decisão com prazo de
+    // dias, não pedido de hóspede para resolver em 2 minutos.
+    total: messages + concierge + bookings + petExceptions,
   };
 
   return (

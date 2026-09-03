@@ -49,7 +49,7 @@ export type StructureAgendaItem = {
 
 export type AlertItem = {
   id: string;
-  type: "review" | "message_error";
+  type: "review" | "message_error" | "pet_exception";
   title: string;
   desc: string;
   time: string;

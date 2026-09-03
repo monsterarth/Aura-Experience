@@ -248,7 +248,9 @@ function AreaConfigs({ s }: { s: StayDetailState }) {
 }
 
 export function LodgingCard({ s }: { s: StayDetailState }) {
-  const { locked, isEditing, isGovOnly, formData, setFormData, petList, maxPets, patchPet, addPet, removePet, togglePet } = s;
+  const { locked, isEditing, isGovOnly, formData, setFormData, petList, maxPets, patchPet, addPet, removePet, togglePet,
+    stay, petExcContext, petExcAuthorizedBy, setPetExcAuthorizedBy, petExcNote, setPetExcNote, decidingPetExc, decidePetException } = s;
+  const petExc = (stay as any)?.petException ?? null;
   const hk: any[] = formData.housekeepingItems || [];
   return (
     <Card header={{ icon: BedDouble, tone: "amber", title: "Hospedagem" }}>
@@ -290,7 +292,10 @@ export function LodgingCard({ s }: { s: StayDetailState }) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
           <SectionLabel style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><PawPrint size={10} color={T.brandText} /> Pet{petList.length > 1 ? `s (${petList.length})` : ""}</SectionLabel>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            {petList.length > maxPets && <Pill tone="amber" label={`Acima do limite (${maxPets})`} />}
+            {petExc?.status === "pending" && <Pill tone="red" label="Exceção pendente" />}
+            {petExc?.status === "approved" && <Pill tone="green" label="Exceção aprovada" />}
+            {petExc?.status === "refused" && <Pill tone="red" label="Exceção recusada" />}
+            {!petExc && petList.length > maxPets && <Pill tone="amber" label={`Acima do limite (${maxPets})`} />}
             <span style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>Com pet?</span>
             <Switch checked={!!formData.hasPet} disabled={locked} onChange={() => togglePet()} label="Com pet" />
           </span>
@@ -323,6 +328,69 @@ export function LodgingCard({ s }: { s: StayDetailState }) {
         ))}
         {formData.hasPet && isEditing && !isGovOnly && petList.length < PET_HARD_CAP && (
           <Button variant="outline" tone="orange" icon={Plus} fullWidth onClick={addPet}>Pet</Button>
+        )}
+
+        {/* Pedido de exceção. Fica aqui, colado nos pets, porque é aqui que quem
+            decide já está olhando — a pílula sozinha nunca chamou ninguém. */}
+        {petExc && !isGovOnly && (
+          <div style={{
+            border: `1px solid ${petExc.status === "pending" ? T.redBorder : T.border}`,
+            background: petExc.status === "pending" ? T.redBg : T.card,
+            borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 10,
+          }}>
+            <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: ".1em", textTransform: "uppercase", color: petExc.status === "pending" ? T.red : T.muted }}>
+              Política Pet — exceção
+            </span>
+
+            {(petExc.reasons ?? []).length > 0 && (
+              <ul style={{ margin: 0, paddingLeft: 16 }}>
+                {(petExc.reasons as string[]).map((r, i) => (
+                  <li key={i} style={{ fontSize: 12, color: T.text, fontWeight: 600 }}>{r}</li>
+                ))}
+              </ul>
+            )}
+
+            {petExc.status === "pending" ? (
+              <>
+                {(petExcContext?.inBlackout || (petExcContext?.overlapping?.length ?? 0) > 0) && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {petExcContext?.inBlackout && (
+                      <span style={{ fontSize: 12, color: T.amber, fontWeight: 700 }}>
+                        ⚠ Período de alta — a política prevê recusa.
+                      </span>
+                    )}
+                    {(petExcContext?.overlapping?.length ?? 0) > 0 && (
+                      <span style={{ fontSize: 12, color: T.amber, fontWeight: 700 }}>
+                        ⚠ Já há {petExcContext!.overlapping.length} exceção aprovada com datas sobrepostas.
+                      </span>
+                    )}
+                    <span style={{ fontSize: 11, color: T.muted }}>
+                      Nenhum dos dois recusa sozinho — a decisão é sua, e fica registrada.
+                    </span>
+                  </div>
+                )}
+
+                <F icon={PawPrint} label="Quem autorizou (nome de quem mandou)" locked={false} value={petExcAuthorizedBy}>
+                  <Input value={petExcAuthorizedBy} onChange={e => setPetExcAuthorizedBy(e.target.value)} placeholder="Ex.: Dona Rê" />
+                </F>
+                <F icon={PawPrint} label="Observação" locked={false} value={petExcNote}>
+                  <Input value={petExcNote} onChange={e => setPetExcNote(e.target.value)} placeholder="Opcional" />
+                </F>
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Button tone="green" fullWidth disabled={decidingPetExc} onClick={() => decidePetException("approved")}>Aprovar</Button>
+                  <Button tone="red" variant="outline" fullWidth disabled={decidingPetExc} onClick={() => decidePetException("refused")}>Recusar</Button>
+                </div>
+              </>
+            ) : (
+              <span style={{ fontSize: 12, color: T.muted }}>
+                {petExc.status === "approved" ? "Aprovada" : "Recusada"}
+                {petExc.authorizedBy ? ` — autorizado por ${petExc.authorizedBy}` : ""}
+                {petExc.decidedAt ? ` em ${new Date(petExc.decidedAt).toLocaleString("pt-BR")}` : ""}
+                {petExc.note ? `. ${petExc.note}` : "."}
+              </span>
+            )}
+          </div>
         )}
       </div>
     </Card>

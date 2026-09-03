@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { StayService } from '@/services/stay-service';
 import { stayDisplayName } from '@/lib/stay-display';
 
 export async function GET(request: NextRequest) {
@@ -216,9 +217,36 @@ export async function GET(request: NextRequest) {
             internalUse: !!s.internalUse,
         }));
 
+        // Pedidos de exceção à Política Pet esperando decisão. Ficam no card de
+        // Alertas: a pílula "Acima do limite" só existia dentro do detalhe da
+        // estadia, uma tela que ninguém abre sem já ter motivo — foi assim que um
+        // hóspede chegou com 2 pets sem ninguém ser chamado para decidir.
+        let petExceptions: any[] = [];
+        try {
+            const { data: propRow } = await supabaseAdmin
+                .from('properties').select('settings').eq('id', propertyId).maybeSingle();
+            const blackout = (propRow?.settings as any)?.petExceptionBlackout ?? null;
+            const pend = await StayService.listPendingPetExceptions(propertyId, blackout);
+            const gIds = Array.from(new Set(pend.filter(p => p.guestId).map(p => p.guestId as string)));
+            const names: Record<string, string> = {};
+            if (gIds.length > 0) {
+                const { data: gs } = await supabaseAdmin.from('guests').select('id, fullName').in('id', gIds);
+                (gs ?? []).forEach((g: any) => { names[g.id] = g.fullName; });
+            }
+            petExceptions = pend.map(p => ({
+                ...p,
+                guestName: (p.guestId && names[p.guestId]) || 'Hóspede',
+                cabinName: (p.cabinId && cabinNameMap[p.cabinId]) || null,
+            }));
+        } catch (e) {
+            // Antes da migration a coluna não existe: o painel inteiro não pode cair por isso.
+            console.error('[reception/dashboard] petExceptions', e);
+        }
+
         return NextResponse.json({
             stats,
             cabins,
+            petExceptions,
             staff: staffRes.data ?? [],
             structures: structuresRes.data ?? [],
             structureBookings,

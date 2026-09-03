@@ -221,6 +221,45 @@ export function useStayDetail(stayId: string | undefined) {
     } catch { toast.error("Erro na operação."); } finally { setIsSaving(false); }
   };
 
+  // ── Exceção à Política Pet ──
+  // O contexto (alta temporada, exceção sobreposta) vem por rota, não pelo service:
+  // é regra de decisão, e ela mora no servidor junto com a auditoria.
+  const [petExcContext, setPetExcContext] = useState<{ inBlackout: boolean; overlapping: any[] } | null>(null);
+  const [petExcAuthorizedBy, setPetExcAuthorizedBy] = useState("");
+  const [petExcNote, setPetExcNote] = useState("");
+  const [decidingPetExc, setDecidingPetExc] = useState(false);
+
+  useEffect(() => {
+    if (!stay?.id || (stay as any)?.petException?.status !== "pending") { setPetExcContext(null); return; }
+    let alive = true;
+    fetch(`/api/admin/stays/${stay.id}/pet-exception`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d) setPetExcContext(d); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [stay?.id, (stay as any)?.petException?.status]);
+
+  const decidePetException = async (decision: "approved" | "refused") => {
+    if (!stay?.id || decidingPetExc) return;
+    setDecidingPetExc(true);
+    try {
+      const res = await fetch(`/api/admin/stays/${stay.id}/pet-exception`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, authorizedBy: petExcAuthorizedBy, note: petExcNote }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Falha ao registrar a decisão.");
+      toast.success(decision === "approved" ? "Exceção aprovada." : "Exceção recusada.");
+      setPetExcAuthorizedBy(""); setPetExcNote("");
+      await refresh();
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setDecidingPetExc(false);
+    }
+  };
+
   // ── Pets ──
   const patchPet = (idx: number, patch: Record<string, any>) =>
     setFormData((p: any) => ({ ...p, pets: (p.pets ?? []).map((pet: any, i: number) => (i === idx ? { ...pet, ...patch } : pet)) }));
@@ -259,6 +298,9 @@ export function useStayDetail(stayId: string | undefined) {
     handleCancel, handleSave, doSave, handleToggleCheckOut, handleConfirmCheckOut,
     fetchAddressByCep,
     patchPet, addPet, removePet, togglePet,
+    // exceção de pet
+    petExcContext, petExcAuthorizedBy, setPetExcAuthorizedBy, petExcNote, setPetExcNote,
+    decidingPetExc, decidePetException,
     ...computed,
   };
 }

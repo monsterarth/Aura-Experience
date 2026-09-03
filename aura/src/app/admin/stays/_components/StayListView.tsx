@@ -7,6 +7,7 @@ import { ArrowUpRight, Ban, Copy, DollarSign, Dog, LogIn, LogOut, MessageCircle,
 import { T, tone as toneOf } from "@/lib/admin-tokens";
 import { DataList, Pill, type Column, type RowAction } from "@/components/aura";
 import { accountChips, isAccountOpen, openChips } from "@/lib/stay-account";
+import { petExceptionStatus } from "@/lib/pets";
 import { activeStatusInfo, futureStatusInfo, fmtDay, isDocPending, titleCase, type StayRow } from "./stay-utils";
 import { formatBRL } from "@/lib/money";
 
@@ -77,7 +78,11 @@ export function StayListView({ rows, mode, onOpen, onWhatsapp, onCheckIn, onChec
         cell: s => {
           const items: React.ReactNode[] = [];
           if (isDocPending(s)) items.push(<ShieldAlert key="doc" size={14} color={T.red} aria-label="Documento pendente" />);
-          if (s.hasPet) items.push(<Dog key="pet" size={14} color={T.orange} aria-label="Pet" />);
+          if (s.hasPet) {
+            const pendente = petExceptionStatus(s) === "pending";
+            items.push(<Dog key="pet" size={14} color={pendente ? T.red : T.orange}
+              aria-label={pendente ? "Pet fora da política — decisão pendente" : "Pet"} />);
+          }
           if (s.groupId) items.push(<Users key="grp" size={14} color={T.blue} aria-label="Grupo" />);
           return items.length ? <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>{items}</span> : null;
         },

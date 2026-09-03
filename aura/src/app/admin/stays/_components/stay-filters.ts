@@ -6,6 +6,7 @@
 import { differenceInCalendarDays, endOfDay, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { hasPendingAccount, isDocPending, npsInfo, titleCase, extractCabinNumber, type StayRow, type TabStatus } from "./stay-utils";
+import { petExceptionStatus } from "@/lib/pets";
 
 // ── Ordenação ────────────────────────────────────────────────────────────────
 
@@ -59,10 +60,11 @@ export function applySort(rows: StayRow[], sort: SortState): StayRow[] {
 
 // ── Filtros ──────────────────────────────────────────────────────────────────
 
-export type FlagId = "pet" | "docPending" | "group" | "internal" | "openAccount";
+export type FlagId = "pet" | "petException" | "docPending" | "group" | "internal" | "openAccount";
 
 export const FLAG_LABELS: Record<FlagId, string> = {
   pet: "Pet",
+  petException: "Pet — exceção pendente",
   docPending: "Doc pendente",
   group: "Grupo",
   internal: "Uso da casa",
@@ -71,6 +73,7 @@ export const FLAG_LABELS: Record<FlagId, string> = {
 
 const FLAG_TEST: Record<FlagId, (s: StayRow) => boolean> = {
   pet: s => !!s.hasPet,
+  petException: s => petExceptionStatus(s as any) === "pending",
   docPending: s => isDocPending(s),
   group: s => !!s.groupId,
   internal: s => !!s.internalUse,

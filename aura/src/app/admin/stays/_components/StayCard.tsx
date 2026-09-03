@@ -6,6 +6,7 @@ import { T, tone as toneOf, type Tone } from "@/lib/admin-tokens";
 import { Button, IconButton } from "@/components/aura/Button";
 import { Pill } from "@/components/aura/Pill";
 import { accountChips, isAccountOpen, openChips } from "@/lib/stay-account";
+import { petExceptionStatus } from "@/lib/pets";
 import { activeStatusInfo, futureStatusInfo, fmtDay, isDocPending, shortName, type StayRow } from "./stay-utils";
 
 export interface StayCardProps {
@@ -76,7 +77,9 @@ export function StayCard({ stay: s, mode, variant = "full", onOpen, onWhatsapp, 
         <Pill tone={s.cabinId ? "brand" : "amber"} size="md" label={s.cabinName || "Sem cabana"} style={{ maxWidth: "70%" }} />
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
           {docPending && <Flag title="Documento pendente" tone="red"><ShieldAlert size={14} /></Flag>}
-          {s.hasPet && <Flag title="Pet" tone="orange"><Dog size={14} /></Flag>}
+          {s.hasPet && (petExceptionStatus(s) === "pending"
+            ? <Flag title="Pet fora da política — decisão pendente" tone="red"><Dog size={14} /></Flag>
+            : <Flag title="Pet" tone="orange"><Dog size={14} /></Flag>)}
           {s.groupId && <Flag title="Grupo" tone="blue"><Users size={14} /></Flag>}
           {/* O link do pré-check-in mora no quadro que o compacto esconde — aqui ele sobe para o topo. */}
           {compact && mode === "futuras" && s.status === "pending" && onCopyLink && (

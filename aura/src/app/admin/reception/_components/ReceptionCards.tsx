@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AlertTriangle, ArrowRight, BellRing, Calendar, CheckCircle2, Clock, Coffee, ExternalLink, Info, MessageCircleWarning, Sparkles, Star, Timer, Utensils } from "lucide-react";
+import { AlertTriangle, ArrowRight, BellRing, Calendar, CheckCircle2, Clock, Coffee, ExternalLink, Info, MessageCircleWarning, Sparkles, Star, Timer, Utensils, Dog } from "lucide-react";
 import type { ConciergeRequest, FBOrder, HousekeepingTask } from "@/types/aura";
 import { T, tone as toneOf } from "@/lib/admin-tokens";
 import { Card, Pill, EmptyState, Button, SectionLabel, SegmentedTabs } from "@/components/aura";
@@ -110,7 +110,9 @@ export function AlertsCard({ items }: { items: AlertItem[] }) {
           {items.map(a => (
             <div key={a.id} style={{ ...tile, background: T.card, display: "flex", gap: 10 }}>
               <span style={{ flexShrink: 0, marginTop: 2 }}>
-                {a.type === "review" ? <Star size={15} color={T.amber} fill={T.amber} /> : <MessageCircleWarning size={15} color={T.red} />}
+                {a.type === "review" ? <Star size={15} color={T.amber} fill={T.amber} />
+                  : a.type === "pet_exception" ? <Dog size={15} color={T.red} />
+                  : <MessageCircleWarning size={15} color={T.red} />}
               </span>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: T.text }}>{a.title}</div>
