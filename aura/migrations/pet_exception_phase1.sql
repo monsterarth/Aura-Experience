@@ -35,10 +35,26 @@ UPDATE properties
           -- Sem teto declarado: a exceção analisa qualquer caso, como está no
           -- texto da política de 2026. A propriedade fecha o teto quando quiser.
           'petExceptionMaxPets', NULL,
-          'petExceptionMaxWeight', NULL
+          'petExceptionMaxWeight', NULL,
+          -- Janela de alta, critério INTERNO de quem decide. Gravada de verdade e
+          -- não deixada no padrão do TypeScript: `defaultOn` implícito já causou
+          -- dois defeitos em produção (regra 5 da seção 1 de MODULARIZATION.md).
+          'petExceptionBlackout', jsonb_build_array(
+             jsonb_build_object('from', '12-15', 'to', '03-15')
+          )
         )
  WHERE COALESCE((settings ->> 'acceptsPets')::boolean, false) IS TRUE
    AND NOT (settings ? 'acceptsPetExceptions');
+
+-- Propriedade que já recebeu as outras chaves numa aplicação anterior deste
+-- arquivo, mas não esta: idempotente, roda de novo sem estragar nada.
+UPDATE properties
+   SET settings = settings || jsonb_build_object(
+         'petExceptionBlackout', jsonb_build_array(
+            jsonb_build_object('from', '12-15', 'to', '03-15')
+         ))
+ WHERE COALESCE((settings ->> 'acceptsPets')::boolean, false) IS TRUE
+   AND NOT (settings ? 'petExceptionBlackout');
 
 -- 3. maxPets nunca foi gravado em nenhuma propriedade: o código caía no padrão 1
 --    de maxPetsOf(). Grava o valor de verdade, para a regra parar de morar só no
