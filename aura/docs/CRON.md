@@ -14,6 +14,7 @@ Schedules in `vercel.json` are **UTC**. The resort runs on BRT (UTC−3), so e.g
 | Name | Schedule (UTC) | What it does |
 |------|----------------|--------------|
 | `daily-automations` | `0 11 * * *` | Queues WhatsApp automation messages |
+| `rh-materialize` | `0 6 * * *` | Gera a escala materializada do mes corrente e dos dois seguintes, por propriedade com o modulo `rh` ligado |
 | `daily-housekeeping` | `10 20 * * *` | Generates next-day housekeeping tasks |
 | `maintenance` | `20 20 * * *` | Materializes recurring maintenance rules/tasks (preventivas) |
 | `evening-revalidation` | `30 20 * * *` | Re-syncs queued pre-checkout messages |
@@ -133,3 +134,28 @@ also where the cooldown/dedup state lives (no extra table).
   stuck in `processing` are auto-recovered after 3 minutes on the next run.
 - **To run locally**: hit `GET /api/cron/<name>` — in development the `CRON_SECRET` check is
   bypassed.
+
+### `rh-materialize`
+
+Diario, 06:00 UTC (03:00 BRT). Mantem `staff_shifts` rolando: o mes corrente e os dois
+seguintes, para toda propriedade com o modulo `rh` ligado.
+
+Existe porque a escala e **gerada, nao calculada na hora**. Sem alguem empurrando a janela,
+chega o dia 1o de um mes que ninguem abriu no admin e a grade esta vazia.
+
+Duas garantias que importam no runbook:
+
+- **Idempotente** por `(staffId, date)`. Rodar duas vezes nao duplica nada, e rodar de novo
+  depois de uma falha faz catch-up sozinho.
+- **Preserva ajuste manual.** Linhas com `origin = 'manual'` nunca sao reescritas: elas sao o
+  que a pessoa que monta a escala corrigiu a mao. A resposta traz `preservados` com a contagem.
+
+Gate de modulo no loop de propriedades (regra 3 de `docs/MODULARIZATION.md`): quem nao contratou
+`rh` e pulado, e a resposta diz quantas foram. Medido no DEV: 1.547 dias gerados na Fazenda,
+2 propriedades puladas, ~5s.
+
+Rodar a mao (producao precisa do header):
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://<host>/api/cron/rh-materialize
+```
