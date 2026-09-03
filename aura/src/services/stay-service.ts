@@ -10,6 +10,7 @@ import { GuestService } from "./guest-service";
 import { HousekeepingService } from "./housekeeping-service";
 import { applyTimeToDate, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
 import { assertFolioOpen } from "@/lib/folio-guard";
+import { DEFAULT_PET_BLACKOUT, touchesBlackout, type PetBlackoutWindow } from "@/lib/pets";
 
 export const StayService = {
   async triggerAutomation(
@@ -236,7 +237,7 @@ export const StayService = {
   ): Promise<void> {
     const { data: stay } = await db()
       .from('stays')
-      .select('guestId')
+      .select('guestId, petException')
       .eq('id', stayId)
       .single();
 
@@ -245,6 +246,9 @@ export const StayService = {
     // Rascunho passa pelas MESMAS allowlists do envio final: era o caminho mais
     // fácil de gravar campo operacional, porque salva sozinho enquanto se digita.
     const safeStay = this._pick(stayData, this.PRE_CHECKIN_GUEST_EDITABLE_FIELDS);
+    if ('petException' in safeStay) {
+      safeStay.petException = this._sanitizePetException(safeStay.petException, stay.petException);
+    }
     const safeGuest = this._pick(guestData, this.PRE_CHECKIN_GUEST_FIELDS);
 
     await Promise.all([
@@ -269,8 +273,34 @@ export const StayService = {
   PRE_CHECKIN_GUEST_EDITABLE_FIELDS: [
     'expectedArrivalTime', 'vehiclePlate', 'travelReason', 'transportation',
     'lastCity', 'nextCity', 'hasPet', 'petDetails', 'pets', 'additionalGuests',
-    'counts', 'areaConfigs',
+    'counts', 'areaConfigs', 'petPolicyAcceptedAt', 'petException',
   ] as const,
+
+  /**
+   * `petException` chega pelo mesmo payload do navegador que tudo o mais, então
+   * ele NÃO pode ser gravado como veio: um request forjado mandaria
+   * `status: 'approved'` e se autoaprovaria. Do hóspede só se aceita o pedido —
+   * quem decide é a recepção, por outra rota.
+   *
+   * E uma exceção JÁ DECIDIDA não volta para `pending`: reenviar o formulário não
+   * pode apagar a recusa que alguém registrou com nome e hora.
+   */
+  _sanitizePetException(incoming: unknown, current: unknown): unknown {
+    const cur = (current ?? null) as { status?: string } | null;
+    if (cur && cur.status && cur.status !== 'pending') return cur;
+
+    if (!incoming || typeof incoming !== 'object') return null;
+    const inc = incoming as Record<string, unknown>;
+    const reasons = Array.isArray(inc.reasons) ? inc.reasons.filter((r) => typeof r === 'string').slice(0, 10) : [];
+
+    return {
+      status: 'pending',
+      reasons,
+      // Mantém o instante do primeiro pedido: reenviar o form não reinicia a espera.
+      requestedAt: (cur as { requestedAt?: string } | null)?.requestedAt ?? new Date().toISOString(),
+      decidedAt: null, decidedBy: null, authorizedBy: null, note: null,
+    };
+  },
 
   /**
    * O mesmo cuidado para a tabela `guests`: o formulário mandava o objeto inteiro,
@@ -291,11 +321,14 @@ export const StayService = {
 
   async completePreCheckin(propertyId: string, stayId: string, stayUpdate: Partial<Stay>, guestUpdate: Partial<Guest>): Promise<string> {
     // Busca id do guest e dados de grupo
-    const { data: stay } = await db().from('stays').select('guestId, groupId, accessCode, status').eq('id', stayId).single();
+    const { data: stay } = await db().from('stays').select('guestId, groupId, accessCode, status, petException').eq('id', stayId).single();
     if (!stay) throw new Error("Stay not found");
 
     let finalAccessCode = stay.accessCode;
     const sanitizedStayUpdate = this._pick(stayUpdate as Record<string, any>, this.PRE_CHECKIN_GUEST_EDITABLE_FIELDS);
+    if ('petException' in sanitizedStayUpdate) {
+      sanitizedStayUpdate.petException = this._sanitizePetException(sanitizedStayUpdate.petException, stay.petException);
+    }
     // O payload do hóspede também passa por allowlist: antes ia inteiro para o banco.
     const sanitizedGuestUpdate = this._pick(guestUpdate as Record<string, any>, this.PRE_CHECKIN_GUEST_FIELDS);
 
@@ -958,4 +991,101 @@ export const StayService = {
   // única faxina possível na aba Encerradas e escondia a estadia para sempre. O
   // lugar dela é a grade de "Últimas saídas" + histórico paginado, e as 8 estadias
   // que estavam em 'archived' voltaram por migration (`unarchive_stays.sql`).
+
+  // ── Exceção à Política Pet ───────────────────────────────────────────────────
+  //
+  // O pedido nasce no pré-check-in (ver `_sanitizePetException`) e morre aqui,
+  // decidido por gente. Os dois critérios abaixo INFORMAM quem decide; nenhum
+  // recusa sozinho — a direção libera exceção várias vezes por mês e tirar essa
+  // possibilidade só faria a decisão sair do sistema de novo.
+
+  /**
+   * Pedidos pendentes com o contexto da decisão junto: se as datas tocam a alta
+   * temporada e se já existe outra exceção aprovada com datas sobrepostas.
+   *
+   * Uma consulta para os pendentes e outra para os aprovados — nunca uma por
+   * estadia. Só olha para frente: pedido de estadia que já passou não é decisão,
+   * é histórico.
+   */
+  async listPendingPetExceptions(propertyId: string, blackout?: PetBlackoutWindow[] | null): Promise<Array<{
+    stayId: string; guestId: string | null; cabinId: string | null;
+    checkIn: string; checkOut: string; pets: any[]; reasons: string[];
+    requestedAt: string | null; inBlackout: boolean; overlapping: { stayId: string; checkIn: string; checkOut: string }[];
+  }>> {
+    const todayIso = new Date().toISOString();
+
+    const [pendingRes, approvedRes] = await Promise.all([
+      db().from('stays')
+        .select('id, guestId, cabinId, checkIn, checkOut, pets, petException')
+        .eq('propertyId', propertyId)
+        .not('petException', 'is', null)
+        .gte('checkOut', todayIso)
+        .order('checkIn', { ascending: true }),
+      db().from('stays')
+        .select('id, checkIn, checkOut, petException')
+        .eq('propertyId', propertyId)
+        .not('petException', 'is', null)
+        .gte('checkOut', todayIso),
+    ]);
+
+    const pending = (pendingRes.data ?? []).filter((s: any) => s.petException?.status === 'pending');
+    const approved = (approvedRes.data ?? []).filter((s: any) => s.petException?.status === 'approved');
+    const windows = blackout ?? DEFAULT_PET_BLACKOUT;
+
+    return pending.map((s: any) => ({
+      stayId: s.id,
+      guestId: s.guestId ?? null,
+      cabinId: s.cabinId ?? null,
+      checkIn: s.checkIn,
+      checkOut: s.checkOut,
+      pets: Array.isArray(s.pets) ? s.pets : [],
+      reasons: Array.isArray(s.petException?.reasons) ? s.petException.reasons : [],
+      requestedAt: s.petException?.requestedAt ?? null,
+      inBlackout: touchesBlackout(s.checkIn, s.checkOut, windows),
+      // Sobreposição de datas: duas exceções na pousada ao mesmo tempo é o risco
+      // real, não "no mesmo feriado".
+      overlapping: approved
+        .filter((a: any) => a.id !== s.id && a.checkIn < s.checkOut && a.checkOut > s.checkIn)
+        .map((a: any) => ({ stayId: a.id, checkIn: a.checkIn, checkOut: a.checkOut })),
+    }));
+  },
+
+  /**
+   * Registra a decisão. `authorizedBy` é texto livre porque a direção não opera a
+   * plataforma — ela manda fazer, e quem digita é a recepção. Guardar os dois
+   * (quem mandou e quem registrou) é o ponto: hoje não fica registro nenhum.
+   */
+  async decidePetException(
+    propertyId: string, stayId: string,
+    actorId: string, actorName: string,
+    decision: 'approved' | 'refused',
+    authorizedBy?: string | null, note?: string | null,
+  ): Promise<void> {
+    const { data: stay } = await db().from('stays')
+      .select('petException').eq('id', stayId).eq('propertyId', propertyId).maybeSingle();
+    if (!stay?.petException) throw new Error("Esta estadia não tem pedido de exceção.");
+
+    const now = new Date().toISOString();
+    const next = {
+      ...(stay.petException as Record<string, unknown>),
+      status: decision,
+      decidedAt: now,
+      decidedBy: actorId,
+      authorizedBy: (authorizedBy ?? '').trim() || null,
+      note: (note ?? '').trim() || null,
+    };
+
+    const { error } = await db().from('stays')
+      .update({ petException: next, updatedAt: now })
+      .eq('id', stayId).eq('propertyId', propertyId);
+    if (error) throw new Error(error.message);
+
+    const quem = next.authorizedBy ? ` Autorizado por: ${next.authorizedBy}.` : '';
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName,
+      action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: `Exceção à Política Pet ${decision === 'approved' ? 'APROVADA' : 'RECUSADA'}.${quem}${next.note ? ` Observação: ${next.note}` : ''}`,
+      newData: next,
+    });
+  },
 };

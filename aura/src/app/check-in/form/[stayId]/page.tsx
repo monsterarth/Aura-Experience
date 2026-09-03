@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { fetchCEP, sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
 import { defaultCountryForLang, splitPhone, joinPhone, isLocalNumberValid } from "@/lib/phone";
-import { DEFAULT_PET_WEIGHT, EMPTY_PET, PET_HARD_CAP, maxPetsOf, readPets, writePets } from "@/lib/pets";
+import { DEFAULT_PET_WEIGHT, EMPTY_PET, PET_HARD_CAP, classifyPets, maxPetsOf, readPets, writePets } from "@/lib/pets";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { toast, Toaster } from "sonner";
 import { cn } from "@/lib/utils";
@@ -86,12 +86,25 @@ const translations = {
     petAdd: "Adicionar outro pet",
     petRemove: "Remover pet",
     petOverLimit: "Nossa política prevê até {n} por acomodação. Registramos a informação e a recepção confirma a possibilidade antes da sua chegada.",
+    petExcTitle: "Seu pedido ficará em análise",
+    petExcBody: "O que você informou está fora da nossa Política Pet, então a hospedagem do animal depende de autorização. Avaliamos caso a caso — considerando a ocupação do período, as datas, a acomodação reservada e o porte do animal — e retornamos com a resposta. Enquanto não houver autorização expressa, não há autorização.",
+    petExcWhy: "Motivo da análise:",
+    petExcCount: "{n} animais (nossa política prevê {max})",
+    petExcWeight: "{name} tem {w} kg (nossa política prevê até {max} kg)",
+    petExcSpecies: "{name} é de espécie fora das que recebemos habitualmente",
+    petExcBadge: "Em análise",
+    petBlockedTitle: "Não conseguimos receber este animal",
+    petBlockedBody: "O que foi informado está além do que analisamos. Fale com a recepção antes de seguir — ajuste os dados para continuar o pré-check-in.",
+    petBlockedCount: "Não analisamos pedidos acima de {max} animais",
+    petBlockedWeight: "Não analisamos pedidos de animal acima de {max} kg",
+    petBlockedUnder: "Peso abaixo de {max} kg — confira o valor informado",
     termsTitle: "Termos e Aceite",
     termsDesc: "Para finalizar o seu pré-check-in, por favor, leia e concorde com as políticas da nossa propriedade.",
     agree: "Li e concordo com a",
     polGen: "Política Geral da Propriedade",
     polPriv: "Política de Privacidade (LGPD)",
     polPet: "Política Pet",
+    polPetExc: "Política Pet — Exceção",
     mandatoryWarn: "Todos os campos e termos marcados com * são obrigatórios para emissão da FNRH.",
     submit: "Finalizar Check-in",
     successTitle: "Check-in Concluído!",
@@ -189,12 +202,25 @@ const translations = {
     petAdd: "Add another pet",
     petRemove: "Remove pet",
     petOverLimit: "Our policy allows up to {n} per accommodation. We have recorded your information and the front desk will confirm before your arrival.",
+    petExcTitle: "Your request will be reviewed",
+    petExcBody: "What you entered falls outside our Pet Policy, so hosting the animal depends on authorization. We assess each case — occupancy for the period, the dates, the accommodation booked and the animal's size — and get back to you. Until there is express authorization, there is no authorization.",
+    petExcWhy: "Reason for review:",
+    petExcCount: "{n} animals (our policy allows {max})",
+    petExcWeight: "{name} weighs {w} kg (our policy allows up to {max} kg)",
+    petExcSpecies: "{name} is a species outside the ones we usually host",
+    petExcBadge: "Under review",
+    petBlockedTitle: "We are not able to host this animal",
+    petBlockedBody: "What you entered is beyond what we review. Please talk to the front desk — adjust the details to continue your pre-check-in.",
+    petBlockedCount: "We do not review requests above {max} animals",
+    petBlockedWeight: "We do not review requests for animals above {max} kg",
+    petBlockedUnder: "Weight below {max} kg — please check the value entered",
     termsTitle: "Terms and Agreement",
     termsDesc: "To complete your pre-check-in, please read and agree to our property's policies.",
     agree: "I have read and agree to the",
     polGen: "General Property Policy",
     polPriv: "Privacy Policy",
     polPet: "Pet Policy",
+    polPetExc: "Pet Policy — Exception",
     mandatoryWarn: "All fields and terms marked with * are mandatory for guest registration.",
     submit: "Complete Check-in",
     successTitle: "Check-in Complete!",
@@ -292,12 +318,25 @@ const translations = {
     petAdd: "Añadir otra mascota",
     petRemove: "Quitar mascota",
     petOverLimit: "Nuestra política permite hasta {n} por alojamiento. Registramos la información y la recepción lo confirmará antes de su llegada.",
+    petExcTitle: "Su solicitud quedará en análisis",
+    petExcBody: "Lo que informó está fuera de nuestra Política de Mascotas, por lo que el alojamiento del animal depende de autorización. Evaluamos caso por caso — la ocupación del período, las fechas, el alojamiento reservado y el porte del animal — y le respondemos. Mientras no haya autorización expresa, no hay autorización.",
+    petExcWhy: "Motivo del análisis:",
+    petExcCount: "{n} animales (nuestra política permite {max})",
+    petExcWeight: "{name} pesa {w} kg (nuestra política permite hasta {max} kg)",
+    petExcSpecies: "{name} es de una especie fuera de las que recibimos habitualmente",
+    petExcBadge: "En análisis",
+    petBlockedTitle: "No podemos recibir a este animal",
+    petBlockedBody: "Lo informado está más allá de lo que analizamos. Hable con la recepción — ajuste los datos para continuar su pre-check-in.",
+    petBlockedCount: "No analizamos solicitudes de más de {max} animales",
+    petBlockedWeight: "No analizamos solicitudes de animales de más de {max} kg",
+    petBlockedUnder: "Peso por debajo de {max} kg — revise el valor informado",
     termsTitle: "Términos y Aceptación",
     termsDesc: "Para finalizar su pre-check-in, lea y acepte las políticas de nuestra propiedad.",
     agree: "He leído y acepto la",
     polGen: "Política General de la Propiedad",
     polPriv: "Política de Privacidad",
     polPet: "Política de Mascotas",
+    polPetExc: "Política de Mascotas — Excepción",
     mandatoryWarn: "Todos los campos y términos marcados con * son obligatorios para el registro.",
     submit: "Finalizar Check-in",
     successTitle: "¡Check-in Completado!",
@@ -362,17 +401,20 @@ function hexToHSL(hex: string): string {
  * agora se repete por pet — inline, cada tecla digitada remontaria o input e o campo
  * perderia o foco.
  *
- * O peso é o único limite que BLOQUEIA: fora da faixa da propriedade, o pet aparece
- * marcado como não aceito e o stepper trava nas bordas. Quantidade de pets é outra
- * história — essa só avisa.
+ * O peso deixou de bloquear na faixa do meio: acima de `baseMax` o pet aparece
+ * como "em análise" (pedido de exceção) e o stepper continua andando até `max`,
+ * que é o teto absoluto da propriedade. Travar em 15 kg só ensinava o hóspede a
+ * digitar 14 — e chegar com o cachorro de 20 assim mesmo.
  */
-function PetWeightField({ value, onChange, min, max, label, lang }: {
+function PetWeightField({ value, onChange, min, max, baseMax, label, lang, badge }: {
   value: number;
   onChange: (weight: number) => void;
   min: number;
   max: number;
+  baseMax: number;
   label: string;
   lang: 'pt' | 'en' | 'es';
+  badge: string;
 }) {
   const current = value || Math.max(DEFAULT_PET_WEIGHT, min);
 
@@ -385,7 +427,7 @@ function PetWeightField({ value, onChange, min, max, label, lang }: {
   };
 
   const size = sizeInfo(current);
-  const isBlocked = current < min || current > max;
+  const needsReview = current > baseMax;
   const clamp = (w: number) => Math.min(max, Math.max(min, w));
 
   return (
@@ -398,9 +440,9 @@ function PetWeightField({ value, onChange, min, max, label, lang }: {
             <span className="text-sm font-bold ml-2 opacity-80">— {size.label}</span>
           </p>
         </div>
-        {isBlocked && (
-          <span className="text-[9px] font-bold uppercase bg-red-500/10 text-red-500 px-2 py-1 rounded-lg">
-            {lang === 'en' ? 'Not accepted' : lang === 'es' ? 'No aceptado' : 'Não aceito'}
+        {needsReview && (
+          <span className="text-[9px] font-bold uppercase bg-amber-500/15 text-amber-600 px-2 py-1 rounded-lg">
+            {badge}
           </span>
         )}
       </div>
@@ -679,7 +721,10 @@ export default function UnifiedPreCheckin() {
 
     if (!agreedGeneral) errors.push(t.polGen);
     if (!agreedPrivacy) errors.push(t.polPriv);
-    if (stay.hasPet && !agreedPet) errors.push(t.polPet);
+    if (stay.hasPet && !agreedPet) errors.push(isPetExc ? t.polPetExc : t.polPet);
+    // Único bloqueio que sobrou no formulário: acima do teto absoluto não vira
+    // nem pedido. Tudo entre a política base e o teto passa como exceção.
+    if (stay.hasPet && petCheck.band === "blocked") errors.push(t.petBlockedTitle);
 
     return errors;
   };
@@ -805,10 +850,28 @@ export default function UnifiedPreCheckin() {
       };
 
       const { areaConfigs, bedAssignments, ...stayRest } = stay;
+      const petsForWrite = writePets(!!stay.hasPet, stay.pets);
+      const nowIso = new Date().toISOString();
+
+      // Motivos em português: quem lê isto é a recepção, não o hóspede.
+      const petReasonsPt = petCheck.reasons.map((r) => {
+        const nameOf = (i: number) => (pets[i]?.name || "").trim() || `Pet ${i + 1}`;
+        if (r.kind === "count") return `${r.value} animais (a política prevê ${r.limit})`;
+        if (r.kind === "weight") return `${nameOf(r.index)} tem ${r.value} kg (a política prevê até ${r.limit} kg)`;
+        if (r.kind === "underweight") return `${nameOf(r.index)} com peso abaixo de ${r.limit} kg`;
+        return `${nameOf(r.index)} é de espécie "${r.value}"`;
+      });
+
       const fnrhStayPayload = {
         ...stayRest,
         // Mantém pets/hasPet/petDetails coerentes entre si numa escrita só.
-        ...writePets(!!stay.hasPet, stay.pets),
+        ...petsForWrite,
+        // O aceite deixa de ser decorativo: é ele que sustenta a análise da exceção
+        // e a taxa. Sem gravar, não há base para recusar entrada nem para cobrar.
+        petPolicyAcceptedAt: petsForWrite.hasPet && agreedPet ? nowIso : null,
+        petException: petsForWrite.hasPet && isPetExc
+          ? { status: "pending", reasons: petReasonsPt, requestedAt: nowIso }
+          : null,
         additionalGuests: stay.additionalGuests.map((ag: any) => ({
           ...ag,
           document: ag.document ? sanitizeDocumentForFnrh(ag.document) : ""
@@ -935,11 +998,52 @@ export default function UnifiedPreCheckin() {
 
   const petPolicyAlert = propertyData?.settings?.petPolicyAlert?.[lang] || propertyData?.settings?.petPolicyAlert?.pt || "Pet Friendly! Read our policy.";
 
-  // Regras de pet da propriedade. Peso bloqueia; quantidade só avisa.
+  // Regras de pet da propriedade. Duas camadas: a política base (maxPets,
+  // petMaxWeight) e a exceção, que analisa o que passa disso até um teto absoluto.
   const petMinWeight: number = propertyData?.settings?.petMinWeight || 1;
   const petMaxWeight: number = propertyData?.settings?.petMaxWeight || 40;
   const maxPets = maxPetsOf(propertyData?.settings);
+  const acceptsPetExceptions = propertyData?.settings?.acceptsPetExceptions !== false;
+  const petExcMaxWeight = propertyData?.settings?.petExceptionMaxWeight ?? null;
   const pets: any[] = stay.pets ?? [];
+
+  const petCheck = classifyPets(pets, {
+    maxPets,
+    petMinWeight,
+    petMaxWeight,
+    acceptsPetExceptions,
+    petExceptionMaxPets: propertyData?.settings?.petExceptionMaxPets ?? null,
+    petExceptionMaxWeight: petExcMaxWeight,
+  });
+
+  // Até onde o stepper anda. Sem exceção, para no limite da base; com exceção, no
+  // teto absoluto — e se a propriedade não declarou teto, num valor de tela que só
+  // existe para o botão ter fim (a classificação é que decide, não o input).
+  const petWeightCeiling = !acceptsPetExceptions
+    ? petMaxWeight
+    : (petExcMaxWeight && petExcMaxWeight > petMaxWeight ? petExcMaxWeight : Math.max(petMaxWeight, 80));
+
+  // Em exceção, o hóspede aceita a POLÍTICA PET EXCEÇÃO — não a base. Assinar o
+  // texto que diz "só 1 animal" para trazer 2 é a contradição que este módulo existe
+  // para acabar. O checkbox é o mesmo; o que muda é o documento por trás dele.
+  const isPetExc = petCheck.band === "exception";
+
+  /** Motivo em texto, para o hóspede saber exatamente o que saiu da regra. */
+  const petReasonLabel = (r: (typeof petCheck.reasons)[number]): string => {
+    const nameOf = (i: number) => (pets[i]?.name || "").trim() || `${t.petOne} ${i + 1}`;
+    if (r.kind === "count") return t.petExcCount.replace("{n}", String(r.value)).replace("{max}", String(r.limit));
+    if (r.kind === "weight") return t.petExcWeight.replace("{name}", nameOf(r.index)).replace("{w}", String(r.value)).replace("{max}", String(r.limit));
+    if (r.kind === "underweight") return t.petBlockedUnder.replace("{max}", String(r.limit));
+    return t.petExcSpecies.replace("{name}", nameOf(r.index));
+  };
+
+  /** Por que está bloqueado — fala do teto, não do caso. */
+  const petBlockedLabel = (r: (typeof petCheck.blocking)[number]): string => {
+    if (r.kind === "count") return t.petBlockedCount.replace("{max}", String(propertyData?.settings?.petExceptionMaxPets ?? r.limit));
+    if (r.kind === "weight") return t.petBlockedWeight.replace("{max}", String(petExcMaxWeight ?? r.limit));
+    if (r.kind === "underweight") return t.petBlockedUnder.replace("{max}", String(r.limit));
+    return t.petExcSpecies.replace("{name}", (pets[r.index]?.name || "").trim() || `${t.petOne} ${r.index + 1}`);
+  };
 
   /** Troca UM pet da lista sem tocar nos outros. */
   const patchPet = (idx: number, patch: Record<string, any>) =>
@@ -957,6 +1061,9 @@ export default function UnifiedPreCheckin() {
   const removePet = (idx: number) =>
     setStay((prev: any) => ({ ...prev, pets: (prev.pets ?? []).filter((_: any, i: number) => i !== idx) }));
   const petPolicyText = propertyData?.settings?.petPolicyText?.[lang] || propertyData?.settings?.petPolicyText?.pt || "Pet policy not defined.";
+  // Sem texto de exceção cadastrado, cai na política base — nunca numa tela vazia.
+  const petExcPolicyText = propertyData?.settings?.petExceptionPolicyText?.[lang] || propertyData?.settings?.petExceptionPolicyText?.pt || petPolicyText;
+  const petExcAlert = propertyData?.settings?.petExceptionAlert?.[lang] || propertyData?.settings?.petExceptionAlert?.pt || t.petExcBody;
   const generalPolicyText = propertyData?.settings?.generalPolicyText?.[lang] || propertyData?.settings?.generalPolicyText?.pt || "General policy not defined.";
   const privacyPolicyText = propertyData?.settings?.privacyPolicyText?.[lang] || propertyData?.settings?.privacyPolicyText?.pt || "Privacy policy not defined.";
 
@@ -1814,20 +1921,44 @@ export default function UnifiedPreCheckin() {
                       value={pet.weight}
                       onChange={(w) => patchPet(idx, { weight: w })}
                       min={petMinWeight}
-                      max={petMaxWeight}
+                      max={petWeightCeiling}
+                      baseMax={petMaxWeight}
                       label={t.petWeight}
                       lang={lang}
+                      badge={t.petExcBadge}
                     />
 
                     {idx < pets.length - 1 && <div className="border-t border-orange-500/20 pt-2" />}
                   </div>
                 ))}
 
-                {/* Passar do limite da propriedade AVISA, nunca bloqueia: o hóspede que não
-                    consegue declarar o 2º pet simplesmente chega com ele sem avisar. */}
-                {pets.length > maxPets && (
-                  <div className="text-xs text-orange-700 bg-orange-500/15 p-4 rounded-xl border border-orange-500/30 leading-relaxed font-semibold">
-                    {t.petOverLimit.replace("{n}", `${maxPets} ${t.petOne.toLowerCase()}${maxPets > 1 ? "s" : ""}`)}
+                {/* Fora da política base o pedido NÃO é recusado no formulário: vira exceção
+                    em análise. Omitir o 2º pet é sempre pior que declará-lo. Só o que passa
+                    do teto absoluto bloqueia — e aí a tela diz o que fazer. */}
+                {petCheck.band === "exception" && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 space-y-3">
+                    <p className="text-sm font-black uppercase tracking-tight text-amber-700">{t.petExcTitle}</p>
+                    <p className="text-xs text-amber-800/90 leading-relaxed">{petExcAlert}</p>
+                    <div className="pt-1">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700/80">{t.petExcWhy}</p>
+                      <ul className="mt-1 space-y-1">
+                        {petCheck.reasons.map((r, i) => (
+                          <li key={i} className="text-xs text-amber-900 font-semibold">• {petReasonLabel(r)}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {petCheck.band === "blocked" && (
+                  <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5 space-y-3">
+                    <p className="text-sm font-black uppercase tracking-tight text-red-600">{t.petBlockedTitle}</p>
+                    <p className="text-xs text-red-700/90 leading-relaxed">{t.petBlockedBody}</p>
+                    <ul className="space-y-1">
+                      {petCheck.blocking.map((r, i) => (
+                        <li key={i} className="text-xs text-red-800 font-semibold">• {petBlockedLabel(r)}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
@@ -1866,7 +1997,7 @@ export default function UnifiedPreCheckin() {
             {stay.hasPet && (
               <label className="flex items-start gap-4 cursor-pointer group p-3 hover:bg-orange-500/5 rounded-2xl transition-colors border border-orange-500/10">
                 <input type="checkbox" checked={agreedPet} onChange={e => setAgreedPet(e.target.checked)} className="mt-1 w-5 h-5 accent-orange-500 cursor-pointer shrink-0" />
-                <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => { e.preventDefault(); setPolicyModal('pet'); }} className="text-orange-500 hover:underline font-bold transition-all">{t.polPet}</button> *</span>
+                <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => { e.preventDefault(); setPolicyModal('pet'); }} className={cn("hover:underline font-bold transition-all", isPetExc ? "text-amber-600" : "text-orange-500")}>{isPetExc ? t.polPetExc : t.polPet}</button> *</span>
               </label>
             )}
           </div>
@@ -1950,13 +2081,13 @@ export default function UnifiedPreCheckin() {
             <div className="p-6 border-b border-border flex justify-between items-center shrink-0">
               <h3 className={cn("font-black text-xl flex items-center gap-2", policyModal === 'pet' ? "text-orange-500" : "text-primary")}>
                 {policyModal === 'general' ? <FileText /> : policyModal === 'privacy' ? <FileText /> : <Dog />}
-                {policyModal === 'general' ? t.polGen : policyModal === 'privacy' ? t.polPriv : t.polPet}
+                {policyModal === 'general' ? t.polGen : policyModal === 'privacy' ? t.polPriv : isPetExc ? t.polPetExc : t.polPet}
               </h3>
               <button type="button" onClick={() => setPolicyModal(null)} className="p-2 hover:bg-secondary rounded-full text-muted-foreground transition-colors"><X size={20} /></button>
             </div>
 
             <div className="p-6 overflow-y-auto custom-scrollbar text-sm text-foreground whitespace-pre-wrap leading-relaxed font-medium">
-              {policyModal === 'general' ? generalPolicyText : policyModal === 'privacy' ? privacyPolicyText : petPolicyText}
+              {policyModal === 'general' ? generalPolicyText : policyModal === 'privacy' ? privacyPolicyText : isPetExc ? petExcPolicyText : petPolicyText}
             </div>
 
             <div className="p-6 border-t border-border shrink-0 bg-secondary/50 rounded-b-[32px]">

@@ -24,6 +24,8 @@ const PUBLIC_SETTINGS_KEYS = [
   "earlyCheckInMessage", "lateCheckInMessage",
   "checkInTime", "checkOutTime", "receptionStartTime", "receptionEndTime",
   "acceptsPets", "petMinWeight", "petMaxWeight", "maxPets",
+  "acceptsPetExceptions", "petExceptionMaxPets", "petExceptionMaxWeight",
+  "petExceptionPolicyText", "petExceptionAlert",
 ] as const;
 
 function publicProperty(p: Record<string, any> | null) {

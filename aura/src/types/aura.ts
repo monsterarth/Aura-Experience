@@ -111,11 +111,29 @@ export interface Property {
     /** Peso fora da faixa BLOQUEIA o pet no formulário. */
     petMaxWeight?: number;
     /**
-     * Quantos pets a propriedade aceita (padrão 1). Diferente do peso, passar deste
-     * número NÃO bloqueia: o formulário avisa e registra, e a recepção confirma antes
-     * da chegada. Bloquear faria o hóspede omitir o segundo pet — que é o bug original.
+     * Quantos pets a propriedade aceita na POLÍTICA PET (padrão 1). Passar deste
+     * número não bloqueia: vira pedido de exceção. Bloquear faria o hóspede omitir
+     * o segundo pet — que é o bug original.
      */
     maxPets?: number;
+
+    // POLÍTICA PET EXCEÇÃO — a segunda camada. Quem passa dos limites acima não é
+    // recusado no formulário: pede exceção, aceita o texto mais duro e fica em
+    // análise. Ver docs/PET-POLICY.md.
+    /** false → não há exceção nesta propriedade: passar da base bloqueia. */
+    acceptsPetExceptions?: boolean;
+    /** Tetos absolutos: acima deles nem vira pedido. Ausente/null = sem teto. */
+    petExceptionMaxPets?: number | null;
+    petExceptionMaxWeight?: number | null;
+    /** Texto da POLÍTICA PET EXCEÇÃO, aceito no lugar da base quando há exceção. */
+    petExceptionPolicyText?: Record<string, string>;
+    /** Aviso de "em análise" mostrado ao hóspede no momento do pedido. */
+    petExceptionAlert?: Record<string, string>;
+    /**
+     * Janelas de alta temporada em que a política prevê recusa ("MM-DD").
+     * Critério INTERNO: aparece para quem decide, nunca no texto do hóspede.
+     */
+    petExceptionBlackout?: { from: string; to: string }[];
 
     // Avaliações de área (mapa): visibilidade pública opt-in (padrão privado/só equipe).
     // Quando public=true, reviews passam por moderação antes de aparecer aos hóspedes.
@@ -731,6 +749,22 @@ export interface PetDetails {
   weight: number;
 }
 
+/**
+ * Pedido de exceção à Política Pet. A direção não opera a plataforma — ela manda
+ * fazer — então `authorizedBy` é texto livre (quem mandou) ao lado de `decidedBy`
+ * (o usuário logado que registrou). Ver docs/PET-POLICY.md.
+ */
+export interface PetException {
+  status: 'pending' | 'approved' | 'refused';
+  /** Por que saiu da política base, congelado no momento do pedido. */
+  reasons: string[];
+  requestedAt: Timestamp;
+  decidedAt?: Timestamp | null;
+  decidedBy?: string | null;
+  authorizedBy?: string | null;
+  note?: string | null;
+}
+
 // --- ENTIDADE ESTADIA ---
 export interface Stay {
   id: string;
@@ -798,6 +832,13 @@ export interface Stay {
    * formulário avisa e registra assim mesmo (informação omitida é pior).
    */
   pets?: PetDetails[];
+  /**
+   * Pedido de exceção à Política Pet, quando os pets declarados passam da base.
+   * Nasce `pending` no pré-check-in e só a recepção fecha. Ver docs/PET-POLICY.md.
+   */
+  petException?: PetException | null;
+  /** Quando o hóspede aceitou a política pet (base ou exceção) no pré-check-in. */
+  petPolicyAcceptedAt?: Timestamp | null;
 
   // Reserva interna / uso da casa
   internalUse?: boolean;   // true → ocupação interna (manutenção, família, bloqueio), não é cliente

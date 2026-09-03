@@ -28,6 +28,14 @@ interface Draft {
   petMinWeight: number;
   petMaxWeight: number;
   maxPets: number;
+  acceptsPetExceptions: boolean;
+  /** null = sem teto: a exceção analisa qualquer caso. */
+  petExceptionMaxPets: number | null;
+  petExceptionMaxWeight: number | null;
+  petExceptionAlert: MultiLangObj;
+  /** Janela de alta ("MM-DD"). Critério interno: nunca aparece para o hóspede. */
+  petExceptionBlackoutFrom: string;
+  petExceptionBlackoutTo: string;
 }
 
 export default function OperacaoPage() {
@@ -45,6 +53,12 @@ export default function OperacaoPage() {
       petMinWeight: Number(s.petMinWeight ?? 1),
       petMaxWeight: Number(s.petMaxWeight ?? 15),
       maxPets: Number(s.maxPets ?? 1),
+      acceptsPetExceptions: s.acceptsPetExceptions !== false,
+      petExceptionMaxPets: s.petExceptionMaxPets ?? null,
+      petExceptionMaxWeight: s.petExceptionMaxWeight ?? null,
+      petExceptionAlert: parseMultiLang(s.petExceptionAlert),
+      petExceptionBlackoutFrom: s.petExceptionBlackout?.[0]?.from ?? "12-15",
+      petExceptionBlackoutTo: s.petExceptionBlackout?.[0]?.to ?? "03-15",
     };
   });
 
@@ -123,12 +137,6 @@ export default function OperacaoPage() {
                 />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Pet fora desta faixa é bloqueado no formulário de pré-check-in.
-            </p>
-
-            <div className="border-t border-border" />
-
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Máximo de pets</label>
@@ -140,11 +148,81 @@ export default function OperacaoPage() {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Diferente do peso, este número <strong>não bloqueia</strong>: o hóspede consegue
-              informar mais pets do que a política prevê e o formulário só avisa que a recepção
-              vai confirmar antes da chegada. Bloquear faria ele omitir o segundo pet e chegar
-              com ele mesmo assim.
+              Estes são os limites da <strong>Política Pet</strong>. Passar deles não bloqueia
+              nada: vira pedido de exceção, abaixo.
             </p>
+
+            <div className="border-t border-border" />
+
+            <SettingRow
+              title="Aceita pedidos de exceção"
+              description="Desligado, passar dos limites acima bloqueia o pré-check-in."
+              icon={Dog}
+              onClick={() => patch({ acceptsPetExceptions: !draft.acceptsPetExceptions })}
+            >
+              <Toggle checked={draft.acceptsPetExceptions} label="Aceita exceção" />
+            </SettingRow>
+
+            {draft.acceptsPetExceptions && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="field-label">Teto de pets (vazio = sem teto)</label>
+                    <input
+                      type="number" min={1} max={5} className="field-input w-full"
+                      value={draft.petExceptionMaxPets ?? ""}
+                      onChange={(e) => patch({ petExceptionMaxPets: e.target.value === "" ? null : parseInt(e.target.value) || null })}
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">Teto de peso, kg (vazio = sem teto)</label>
+                    <input
+                      type="number" min={1} max={100} className="field-input w-full"
+                      value={draft.petExceptionMaxWeight ?? ""}
+                      onChange={(e) => patch({ petExceptionMaxWeight: e.target.value === "" ? null : parseInt(e.target.value) || null })}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Acima do teto o pedido <strong>nem é analisado</strong> — é o único bloqueio que
+                  sobrou no formulário. Deixando vazio, qualquer caso pode ser pedido e a recepção
+                  decide. Entre a política e o teto, o hóspede declara, aceita a Política Pet —
+                  Exceção e fica em análise.
+                </p>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="field-label">Alta temporada — de (MM-DD)</label>
+                    <input
+                      className="field-input w-full" placeholder="12-15"
+                      value={draft.petExceptionBlackoutFrom}
+                      onChange={(e) => patch({ petExceptionBlackoutFrom: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="field-label">até (MM-DD)</label>
+                    <input
+                      className="field-input w-full" placeholder="03-15"
+                      value={draft.petExceptionBlackoutTo}
+                      onChange={(e) => patch({ petExceptionBlackoutTo: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Critério <strong>interno</strong>: aparece para quem decide, nunca no texto que o
+                  hóspede lê. Não recusa sozinho — a direção segue podendo liberar, e a liberação
+                  contra o critério fica registrada com nome.
+                </p>
+
+                <MultiLangField
+                  label="Aviso de exceção em análise"
+                  desc="Mostrado ao hóspede quando o que ele informou passa da Política Pet."
+                  rows={4}
+                  value={draft.petExceptionAlert}
+                  onChange={(v) => patch({ petExceptionAlert: v })}
+                />
+              </>
+            )}
 
             <div className="border-t border-border" />
             <MultiLangField
@@ -158,7 +236,20 @@ export default function OperacaoPage() {
         )}
       </SectionCard>
 
-      <SaveBar dirty={dirty} saving={saving} onReset={reset} onSave={() => save((d) => ({ patch: { ...d } }))} />
+      <SaveBar dirty={dirty} saving={saving} onReset={reset} onSave={() => save((d) => {
+        const { petExceptionBlackoutFrom, petExceptionBlackoutTo, ...rest } = d;
+        const ok = /^\d{2}-\d{2}$/;
+        return {
+          patch: {
+            ...rest,
+            // Formato inválido não vira janela vazia silenciosa: cai fora e o
+            // serviço usa o padrão 15/12–15/03.
+            petExceptionBlackout: ok.test(petExceptionBlackoutFrom) && ok.test(petExceptionBlackoutTo)
+              ? [{ from: petExceptionBlackoutFrom, to: petExceptionBlackoutTo }]
+              : [],
+          },
+        };
+      })} />
     </div>
   );
 }

@@ -19,6 +19,7 @@ interface Draft {
   generalPolicyText: MultiLangObj;
   privacyPolicyText: MultiLangObj;
   petPolicyText: MultiLangObj;
+  petExceptionPolicyText: MultiLangObj;
 }
 
 export default function PoliticasPage() {
@@ -28,6 +29,7 @@ export default function PoliticasPage() {
       generalPolicyText: parseMultiLang(s.generalPolicyText),
       privacyPolicyText: parseMultiLang(s.privacyPolicyText),
       petPolicyText: parseMultiLang(s.petPolicyText),
+      petExceptionPolicyText: parseMultiLang(s.petExceptionPolicyText),
     };
   });
 
@@ -61,6 +63,14 @@ export default function PoliticasPage() {
           rows={6}
           value={draft.petPolicyText}
           onChange={(v) => patch({ petPolicyText: v })}
+        />
+        <div className="border-t border-border" />
+        <MultiLangField
+          label="Política pet — exceção"
+          desc="Texto mais duro, aceito NO LUGAR da política pet quando o hóspede declara mais animais ou animal fora do porte. Em branco, o pedido cai na política base."
+          rows={6}
+          value={draft.petExceptionPolicyText}
+          onChange={(v) => patch({ petExceptionPolicyText: v })}
         />
       </SectionCard>
 
