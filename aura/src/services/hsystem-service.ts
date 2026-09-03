@@ -156,8 +156,17 @@ async function getPortals(propertyId: string, creds: HunitCredentials): Promise<
 
 export const HsystemService = {
   async getContext(propertyId: string): Promise<HsystemContext> {
-    const { data } = await db().from("properties").select("settings").eq("id", propertyId).maybeSingle();
-    const settings = (data?.settings ?? {}) as Record<string, any>;
+    // SÓ as 4 chaves que este contexto lê. `settings` inteiro são 13.180 bytes
+    // comprimidos contra 407 aqui — e este caminho é o mais quente do sistema:
+    // o cron externo do HUNIT chama 1x por minuto (medido em 03/09/2026,
+    // 60 execuções na última hora em `hsystem_sync_log`), ou seja ~18 MB/dia
+    // de egress só para ler quatro chaves.
+    const { data } = await db()
+      .from("properties")
+      .select('hasHsystem:settings->hasHsystem, hsystemConfig:settings->hsystemConfig, checkInTime:settings->checkInTime, checkOutTime:settings->checkOutTime')
+      .eq("id", propertyId)
+      .maybeSingle();
+    const settings = (data ?? {}) as Record<string, any>;
     const stored = (settings.hsystemConfig ?? {}) as Partial<HsystemConfig>;
     return {
       propertyId,

@@ -40,13 +40,15 @@ export async function resolveEvolutionConfig(
   propertyId: string,
   opts: { requireEnabled?: boolean } = {},
 ): Promise<EvolutionConfigResult> {
+  // Só as duas chaves lidas abaixo: `settings` inteiro custa ~13 kB comprimidos,
+  // e este caminho roda a cada envio de WhatsApp.
   const { data: property } = await supabaseAdmin!
     .from('properties')
-    .select('settings')
+    .select('whatsappEnabled:settings->whatsappEnabled, whatsappConfig:settings->whatsappConfig')
     .eq('id', propertyId)
     .single();
 
-  const settings = (property?.settings ?? {}) as Record<string, any>;
+  const settings = (property ?? {}) as Record<string, any>;
 
   if (opts.requireEnabled && !settings.whatsappEnabled) {
     return { ok: false, reason: 'disabled', message: 'WhatsApp desligado na propriedade.' };
