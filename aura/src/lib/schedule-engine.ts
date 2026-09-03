@@ -56,6 +56,8 @@ export interface WorkPattern {
   weekdayTimeOverrides?: Record<string, { startTime: string; endTime: string }> | null;
   effectiveFrom: string;
   effectiveTo?: string | null;
+  /** Anotação de quem criou a vigência ("Rodízio com o João", "Volta de férias"). */
+  note?: string | null;
 }
 
 export interface ResolvedDay {

@@ -5,6 +5,10 @@
       "schedule": "0 11 * * *"
     },
     {
+      "path": "/api/cron/rh-materialize",
+      "schedule": "0 6 * * *"
+    },
+    {
       "path": "/api/cron/evening-revalidation",
       "schedule": "30 20 * * *"
     },

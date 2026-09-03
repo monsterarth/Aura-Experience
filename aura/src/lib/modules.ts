@@ -12,7 +12,7 @@
 // banco). Aqui só se lê.
 
 /** Módulos que podem ser desligados por propriedade. */
-export type ModuleKey = "estoque" | "guarita" | "hsystem" | "ponto";
+export type ModuleKey = "estoque" | "guarita" | "hsystem" | "ponto" | "rh";
 
 interface ModuleDef {
   /** Chave em `properties.settings`. */
@@ -33,6 +33,12 @@ export const MODULES: Record<ModuleKey, ModuleDef> = {
   guarita: { setting: "hasGuarita", defaultOn: false, label: "Guarita & Estacionamento" },
   hsystem: { setting: "hasHsystem", defaultOn: false, label: "Hsystem (canais)" },
   ponto: { setting: "hasTimeclock", defaultOn: false, label: "Ponto" },
+  // Cobre escala e ausências. NÃO cobre o cadastro de pessoas: toda propriedade
+  // tem funcionário, então a aba Pessoas de /admin/rh é core e continua de pé com
+  // o módulo desligado. O gate é POR ABA e não na página — `/admin/rh` é a tela
+  // inicial de admin e manager (`role-routes.ts`), e um guard de página inteira
+  // que redireciona para a home entraria em loop de login.
+  rh: { setting: "hasRH", defaultOn: false, label: "Gente (escala e ausências)" },
 };
 
 /**
