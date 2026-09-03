@@ -804,6 +804,34 @@ export function NewQuoteWizard({
     return rq.result.categories.filter((c) => !off.has(c.categoryId));
   };
 
+  /**
+   * Cabanas oferecidas a mais acomodações do que há livres no período. Não
+   * trava: oferecer "escolham 2 destas 3 entre vocês" é venda legítima. Mas a
+   * proposta pública vai limitar a escolha do cliente a esse número, e o
+   * vendedor precisa saber antes de mandar (caso real de 02/09/2026: três
+   * "Bem Estar 2" cotadas numa pousada que tem duas).
+   */
+  const overOfferedNotes: string[] = (() => {
+    if (!roomQuotes) return [];
+    const count = new Map<string, { name: string; offered: number; free: number }>();
+    for (const rq of roomQuotes) {
+      const p = periodOf(rq.room);
+      const avail = contextByPeriod[`${p.checkIn}|${p.checkOut}`]?.availability;
+      if (!avail) continue;
+      for (const c of includedOf(rq)) {
+        const a = avail[c.categoryId];
+        if (!a) continue;
+        const key = `${p.checkIn}|${p.checkOut}|${c.categoryId}`;
+        const cur = count.get(key) ?? { name: c.category, offered: 0, free: a.free };
+        cur.offered++;
+        count.set(key, cur);
+      }
+    }
+    return Array.from(count.values())
+      .filter((v) => v.free > 0 && v.offered > v.free)
+      .map((v) => `${v.name} oferecida a ${v.offered} acomodações, só ${v.free} livre${v.free > 1 ? "s" : ""}.`);
+  })();
+
   // Sem categoria computável, OU categorias computadas mas nenhuma marcada —
   // os dois travam Salvar/Copiar (nada pra oferecer de qualquer jeito).
   const blocked = roomQuotes?.some(
@@ -1277,6 +1305,17 @@ export function NewQuoteWizard({
     const over = c.overCapacity;
     const p = periodOf(room);
     const avail = contextByPeriod[`${p.checkIn}|${p.checkOut}`]?.availability[c.categoryId];
+    // Quantas acomodações DESTE período oferecem esta cabana. Mais do que há
+    // livre não é erro (o cliente escolhe entre elas) — mas a proposta só vai
+    // deixá-lo escolhê-la `avail.free` vezes, e o vendedor precisa saber.
+    const offeredTo = roomQuotes
+      ? roomQuotes.filter((rq) => {
+          const rp = periodOf(rq.room);
+          return rp.checkIn === p.checkIn && rp.checkOut === p.checkOut
+            && includedOf(rq).some((x) => x.categoryId === c.categoryId);
+        }).length
+      : 0;
+    const overOffered = !!avail && avail.free > 0 && offeredTo > avail.free;
     const chosen = room.selectedCategory === c.categoryId;
     // O preço é editável AQUI, cabana por cabana. Riscado = o valor que o
     // tarifário calculou (flutuação incluída) quando ofereço mais barato;
@@ -1319,13 +1358,19 @@ export function NewQuoteWizard({
           </span>
         )}
         {avail && (
-          <span title={avail.freeCabins.join(", ")}
+          <span title={overOffered
+              ? `Oferecida a ${offeredTo} acomodações com ${avail.free} livre${avail.free > 1 ? "s" : ""}: `
+                + `na proposta o cliente só consegue escolhê-la ${avail.free} vez${avail.free > 1 ? "es" : ""}. `
+                + `Livres: ${avail.freeCabins.join(", ")}`
+              : avail.freeCabins.join(", ")}
             style={pillS(
-              avail.free > 0 ? T.emeraldBg : T.redBg,
-              avail.free > 0 ? T.emerald : T.red,
-              avail.free > 0 ? T.emeraldBorder : T.redBorder
+              avail.free > 0 ? (overOffered ? T.amberBg : T.emeraldBg) : T.redBg,
+              avail.free > 0 ? (overOffered ? T.amber : T.emerald) : T.red,
+              avail.free > 0 ? (overOffered ? T.amberBorder : T.emeraldBorder) : T.redBorder
             )}>
-            {avail.free > 0 ? `${avail.free}/${avail.total} livre${avail.free > 1 ? "s" : ""}` : "Ocupada"}
+            {avail.free > 0
+              ? `${avail.free}/${avail.total} livre${avail.free > 1 ? "s" : ""}${overOffered ? ` · oferecida a ${offeredTo}` : ""}`
+              : "Ocupada"}
           </span>
         )}
         {strike && (
@@ -1838,6 +1883,21 @@ export function NewQuoteWizard({
                       </button>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Mesma cabana oferecida a mais acomodações do que há livres:
+                  aviso, não trava — a proposta pública é quem limita a escolha. */}
+              {overOfferedNotes.length > 0 && (
+                <div style={{
+                  background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 11,
+                  padding: "8px 12px", display: "flex", alignItems: "flex-start", gap: 8,
+                }}>
+                  <AlertTriangle size={12} color={T.amber} style={{ flexShrink: 0, marginTop: 2 }} />
+                  <span style={{ fontSize: 11.5, color: T.amber, lineHeight: 1.45 }}>
+                    {overOfferedNotes.join(" ")} Na proposta, o cliente só consegue escolher
+                    cada cabana enquanto houver unidade livre.
+                  </span>
                 </div>
               )}
 

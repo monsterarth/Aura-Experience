@@ -751,6 +751,54 @@ export const RateService = {
 
   // ── Contexto do orçamento: disponibilidade real + eventos no período ───────
 
+  /**
+   * Cabanas livres POR CATEGORIA no período, indexadas por categoryId (o
+   * mesmo id das tabelas de preço). É a única conta de disponibilidade do
+   * comercial: alimenta o selo "2/2 livres" do assistente e o teto de
+   * escolhas repetidas da proposta pública — as duas telas precisam dizer o
+   * mesmo número. Considera só estadias vivas; bloqueio de manutenção não
+   * entra (nunca entrou), e a recepção segue como última conferência.
+   */
+  async getCategoryAvailability(
+    propertyId: string,
+    checkIn: string,
+    checkOut: string
+  ): Promise<Record<string, RateAvailability>> {
+    const admin = supabaseAdmin!;
+    const [cabinsRes, staysRes] = await Promise.all([
+      admin.from("cabins").select("id, name, categoryId").eq("propertyId", propertyId),
+      admin
+        .from("stays")
+        .select("cabinId, checkIn, checkOut, status")
+        .eq("propertyId", propertyId)
+        .in("status", ["pending", "pre_checkin_done", "active"])
+        .lt("checkIn", `${checkOut}T23:59:59`)
+        .gt("checkOut", `${checkIn}T00:00:00`),
+    ]);
+
+    // Ocupação com a mesma semântica date-only do resto do sistema:
+    // check-out no dia do check-in de outra estadia NÃO conflita.
+    const occupied = new Set<string>();
+    for (const s of (staysRes.data || []) as { cabinId: string | null; checkIn: string; checkOut: string }[]) {
+      if (!s.cabinId) continue;
+      const sIn = (s.checkIn || "").slice(0, 10);
+      const sOut = (s.checkOut || "").slice(0, 10);
+      if (sIn < checkOut && sOut > checkIn) occupied.add(s.cabinId);
+    }
+
+    const availability: Record<string, RateAvailability> = {};
+    for (const c of (cabinsRes.data || []) as { id: string; name: string; categoryId: string | null }[]) {
+      if (!c.categoryId) continue;
+      if (!availability[c.categoryId]) availability[c.categoryId] = { total: 0, free: 0, freeCabins: [] };
+      availability[c.categoryId].total++;
+      if (!occupied.has(c.id)) {
+        availability[c.categoryId].free++;
+        availability[c.categoryId].freeCabins.push(c.name);
+      }
+    }
+    return availability;
+  },
+
   async getQuoteContext(
     propertyId: string,
     checkIn: string,
@@ -762,15 +810,8 @@ export const RateService = {
   }> {
     const admin = supabaseAdmin!;
 
-    const [cabinsRes, staysRes, eventsRes, weddingsRes] = await Promise.all([
-      admin.from("cabins").select("id, name, categoryId").eq("propertyId", propertyId),
-      admin
-        .from("stays")
-        .select("cabinId, checkIn, checkOut, status")
-        .eq("propertyId", propertyId)
-        .in("status", ["pending", "pre_checkin_done", "active"])
-        .lt("checkIn", `${checkOut}T23:59:59`)
-        .gt("checkOut", `${checkIn}T00:00:00`),
+    const [availability, eventsRes, weddingsRes] = await Promise.all([
+      this.getCategoryAvailability(propertyId, checkIn, checkOut),
       admin
         .from("events")
         .select("title, startDate, endDate")
@@ -792,28 +833,6 @@ export const RateService = {
         .lt("checkin", checkOut)
         .gt("checkout", checkIn),
     ]);
-
-    // Ocupação com a mesma semântica date-only do resto do sistema:
-    // check-out no dia do check-in de outra estadia NÃO conflita.
-    const occupied = new Set<string>();
-    for (const s of (staysRes.data || []) as { cabinId: string | null; checkIn: string; checkOut: string }[]) {
-      if (!s.cabinId) continue;
-      const sIn = (s.checkIn || "").slice(0, 10);
-      const sOut = (s.checkOut || "").slice(0, 10);
-      if (sIn < checkOut && sOut > checkIn) occupied.add(s.cabinId);
-    }
-
-    // Indexada por categoryId — o mesmo id que as tabelas de preço usam.
-    const availability: Record<string, RateAvailability> = {};
-    for (const c of (cabinsRes.data || []) as { id: string; name: string; categoryId: string | null }[]) {
-      if (!c.categoryId) continue;
-      if (!availability[c.categoryId]) availability[c.categoryId] = { total: 0, free: 0, freeCabins: [] };
-      availability[c.categoryId].total++;
-      if (!occupied.has(c.id)) {
-        availability[c.categoryId].free++;
-        availability[c.categoryId].freeCabins.push(c.name);
-      }
-    }
 
     const events = ((eventsRes.data || []) as { title: string; startDate: string; endDate?: string | null }[])
       .filter((e) => e.startDate < checkOut && (e.endDate || e.startDate) >= checkIn)

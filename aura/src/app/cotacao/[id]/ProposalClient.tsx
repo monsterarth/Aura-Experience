@@ -61,6 +61,10 @@ type Dict = {
   weddingSamePeriod: (couple: string) => string;
   acceptedBanner: string;
   skipIntake: string;
+  /** Há menos cabanas livres desta categoria do que acomodações — aviso na opção. */
+  onlyNLeft: (n: number) => string;
+  /** Categoria sem cabana livre nas datas (ocupou depois do envio). */
+  noneLeft: string;
 };
 
 const DICT: Record<MsgLang, Dict> = {
@@ -100,6 +104,8 @@ const DICT: Record<MsgLang, Dict> = {
     weddingSamePeriod: (c) => `Casamento de ${c} na pousada neste período`,
     acceptedBanner: "Proposta aceita — já avisamos a recepção.",
     skipIntake: "Prefiro enviar meus dados depois",
+    onlyNLeft: (n) => n === 1 ? "Só 1 disponível para essas datas" : `Só ${n} disponíveis para essas datas`,
+    noneLeft: "Indisponível para essas datas",
   },
   en: {
     eyebrow: "Your quote",
@@ -137,6 +143,8 @@ const DICT: Record<MsgLang, Dict> = {
     weddingSamePeriod: (c) => `${c}'s wedding takes place here during your stay`,
     acceptedBanner: "Quote accepted — the front desk already knows.",
     skipIntake: "I'd rather send my details later",
+    onlyNLeft: (n) => `Only ${n} available for these dates`,
+    noneLeft: "No longer available for these dates",
   },
   es: {
     eyebrow: "Su presupuesto",
@@ -174,6 +182,8 @@ const DICT: Record<MsgLang, Dict> = {
     weddingSamePeriod: (c) => `Boda de ${c} en la posada durante su estadía`,
     acceptedBanner: "Presupuesto aceptado — ya avisamos a recepción.",
     skipIntake: "Prefiero enviar mis datos después",
+    onlyNLeft: (n) => `Solo ${n} disponible${n !== 1 ? "s" : ""} para estas fechas`,
+    noneLeft: "No disponible para estas fechas",
   },
 };
 
@@ -199,6 +209,11 @@ function LangSwitcher({ lang, setLang }: { lang: MsgLang; setLang: (l: MsgLang) 
   );
 }
 
+/** Teto de vezes que a categoria pode ser escolhida entre as acomodações
+ *  (cabanas livres, vindo do servidor). Sem número = sem teto, como era. */
+const capOf = (quote: PublicQuoteView, categoryId: string) =>
+  quote.unitsFree?.[categoryId] ?? Infinity;
+
 /** `startAtIntake` = link "?cadastro=1", que a recepção copia no drawer para
  *  quem fechou por WhatsApp ou aceitou antes de o cadastro existir. */
 export default function ProposalClient({ quote, startAtIntake }: {
@@ -209,6 +224,10 @@ export default function ProposalClient({ quote, startAtIntake }: {
   const t = DICT[lang];
   const [picks, setPicks] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
+    // Escolha repetida acima do teto (a recepção pré-marcou a mesma cabana em
+    // todas, ou a ocupação mudou depois do envio) cai em ordem: a primeira
+    // acomodação fica com ela, as seguintes voltam a "escolha uma".
+    const used: Record<string, number> = {};
     for (const r of quote.rooms) {
       // A escolha gravada só vale se ainda estiver entre as opções: recalcular
       // o orçamento pode ter tirado a cabana do ar, e um pick órfão deixava o
@@ -219,7 +238,9 @@ export default function ProposalClient({ quote, startAtIntake }: {
       // Uma opção só não é escolha: deixar o cliente clicar num cartão único
       // para destravar o botão é charada, não decisão.
       const pick = saved ?? (r.options.length === 1 ? r.options[0].categoryId : null);
-      if (pick) initial[r.id] = pick;
+      if (!pick || (used[pick] ?? 0) >= capOf(quote, pick)) continue;
+      used[pick] = (used[pick] ?? 0) + 1;
+      initial[r.id] = pick;
     }
     return initial;
   });
@@ -424,12 +445,26 @@ export default function ProposalClient({ quote, startAtIntake }: {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {room.options.map((o) => {
                 const picked = picks[room.id] === o.categoryId;
+                // Teto por categoria: as OUTRAS acomodações já levaram todas
+                // as cabanas livres desta? Então aqui ela não clica — e diz
+                // por quê, em vez de sumir. `scarce` mostra o aviso antes de
+                // esgotar, para o cliente entender a conta desde o início.
+                const cap = capOf(quote, o.categoryId);
+                const takenElsewhere = quote.rooms
+                  .filter((r) => r.id !== room.id && picks[r.id] === o.categoryId).length;
+                const exhausted = !picked && takenElsewhere >= cap;
+                const scarce = quote.rooms.length > cap;
                 return (
-                  <button key={o.categoryId}
-                    onClick={() => setPicks((p) => ({ ...p, [room.id]: o.categoryId }))}
+                  <button key={o.categoryId} disabled={exhausted}
+                    aria-disabled={exhausted}
+                    onClick={() => {
+                      if (exhausted) return;
+                      setPicks((p) => ({ ...p, [room.id]: o.categoryId }));
+                    }}
                     style={{
                       display: "flex", alignItems: "center", gap: 12, width: "100%",
-                      textAlign: "left", cursor: "pointer", fontFamily: "inherit",
+                      textAlign: "left", cursor: exhausted ? "not-allowed" : "pointer",
+                      fontFamily: "inherit", opacity: exhausted ? 0.55 : 1,
                       background: picked ? "var(--brand-soft)" : "var(--surface)",
                       border: `1.5px solid ${picked ? "var(--brand)" : "var(--line)"}`,
                       borderRadius: 16, padding: "14px 16px",
@@ -466,6 +501,15 @@ export default function ProposalClient({ quote, startAtIntake }: {
                       {o.overCapacity && (
                         <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
                           ⚠ {OVER_CAPACITY_SHORT[lang]}
+                        </span>
+                      )}
+                      {scarce && (
+                        <span style={{
+                          display: "block", fontSize: 11.5, marginTop: 3,
+                          color: exhausted ? "var(--ink-soft)" : "var(--muted)",
+                          fontWeight: exhausted ? 700 : 500,
+                        }}>
+                          {cap === 0 ? t.noneLeft : t.onlyNLeft(cap)}
                         </span>
                       )}
                     </span>
