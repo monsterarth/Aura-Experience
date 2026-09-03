@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
       if (off) return off;
       const staffId = searchParams.get("staffId");
       const padroes = staffId
-        ? await HRService.getPatternsForStaff(staffId)
+        ? await HRService.getPatternsForStaff(staffId, propertyId)
         : await HRService.getPatterns(propertyId);
       // O rótulo vem pronto do servidor: é derivado da FORMA do padrão, e
       // recalculá-lo na tela seria a segunda cópia da regra.

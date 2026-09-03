@@ -85,6 +85,7 @@ export function ProfileView({ staffId, isOwnProfile, profileBasePath = "/admin/p
   const [saving, setSaving] = useState(false);
   const [weekActivityCount, setWeekActivityCount] = useState<number | null>(null);
   const [nextDayOff, setNextDayOff] = useState<string | null>(null);
+  const [patternLabel, setPatternLabel] = useState<string | null>(null);
   const [activityLogs, setActivityLogs] = useState<Array<{ id: string; action: string; entity: string; details: string; timestamp: string }>>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
@@ -125,12 +126,18 @@ export function ProfileView({ staffId, isOwnProfile, profileBasePath = "/admin/p
 
     fetchMeuDia(amanha, daqui30, staff.id)
       .then(r => {
-        const folga = r?.days.find(d => !d.isWork);
+        // `hasSchedule` e não `!isWork`: quem não tem jornada devolve os 30 dias
+        // com `isWork: false`, e o `find` casava em amanhã — a tela anunciava
+        // uma folga inventada para metade da equipe. Sem jornada não há folga,
+        // há ausência de escala, e são coisas diferentes.
+        setPatternLabel(r?.patternLabel ?? null);
+        if (!r || !r.hasSchedule) { setNextDayOff(null); return; }
+        const folga = r.days.find(d => !d.isWork);
         if (!folga) { setNextDayOff(null); return; }
         const [y, m, d] = folga.date.split("-").map(Number);
         setNextDayOff(DAY_NAMES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]);
       })
-      .catch(() => setNextDayOff(null));
+      .catch(() => { setNextDayOff(null); setPatternLabel(null); });
   }, [staff?.id]);
 
   useEffect(() => {
@@ -314,11 +321,18 @@ export function ProfileView({ staffId, isOwnProfile, profileBasePath = "/admin/p
                 className="text-lg font-black"
                 style={{ background: "linear-gradient(135deg,#9b6dff,#4ec9d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}
               >
-                {SCHEDULE_LABELS[staff.scheduleType ?? ""] ?? "—"}
+                {/* Vem do modelo novo. `staff.scheduleType` é coluna morta desde
+                    a fatia 1: nada mais a escreve, então ela mostrava "—" para
+                    gente com jornada completa e discordava do card logo abaixo. */}
+                {patternLabel ?? "—"}
               </div>
               <div className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wide mt-0.5">Escala</div>
               <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
-                {nextDayOff ? `próxima folga: ${nextDayOff}` : staff.scheduleType ? "sem folga em 30d" : "não configurada"}
+                {nextDayOff
+                  ? `próxima folga: ${nextDayOff}`
+                  : patternLabel && patternLabel !== "Sem jornada fixa"
+                    ? "sem folga em 30d"
+                    : "não configurada"}
               </div>
             </div>
 

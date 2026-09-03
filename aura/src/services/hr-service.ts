@@ -116,11 +116,18 @@ export const HRService = {
     return rows<WorkPattern>(data);
   },
 
-  async getPatternsForStaff(staffId: string): Promise<WorkPattern[]> {
+  /**
+   * `propertyId` NÃO é opcional por preguiça de assinatura: sem ele a rota que
+   * aceita `?staffId=` devolveria a jornada de gente de outra propriedade — a
+   * mesma família de vazamento que a fatia 0 acabou de fechar no RLS. As rotas
+   * antigas que este endpoint substitui filtravam por propriedade nesse caminho.
+   */
+  async getPatternsForStaff(staffId: string, propertyId: string): Promise<WorkPattern[]> {
     const { data, error } = await db()
       .from("staff_work_patterns")
       .select(PATTERN_COLS)
       .eq("staffId", staffId)
+      .eq("propertyId", propertyId)
       .order("effectiveFrom", { ascending: false });
     if (error) throw new Error(`Falha ao ler padrão da pessoa: ${error.message}`);
     return rows<WorkPattern>(data);
@@ -191,7 +198,7 @@ export const HRService = {
     from: string,
     to: string,
     opts: { staffIds?: string[] } = {},
-  ): Promise<{ gravados: number; preservados: number }> {
+  ): Promise<{ gravados: number; preservados: number; apagados: number }> {
     const client = db();
 
     let staffQuery = client
@@ -204,7 +211,7 @@ export const HRService = {
     const { data: staffData, error: staffError } = await staffQuery;
     if (staffError) throw new Error(`Falha ao ler equipe: ${staffError.message}`);
     const equipe = rows<{ id: string; fullName: string; role: string }>(staffData);
-    if (equipe.length === 0) return { gravados: 0, preservados: 0 };
+    if (equipe.length === 0) return { gravados: 0, preservados: 0, apagados: 0 };
 
     const [padroes, ausencias, existentes] = await Promise.all([
       this.getPatterns(propertyId),
@@ -231,13 +238,6 @@ export const HRService = {
       const patterns = porPessoa.get(pessoa.id) ?? [];
       const minhasAusencias = ausencias.filter(a => a.staffId === pessoa.id);
 
-      // Quem não tem jornada não gera linha nenhuma. Gravar 30 dias de
-      // `isWork=false` para um diretor faria o relatório dizer "30 folgas" onde a
-      // verdade é "não tem escala" — e são ~900 linhas por trimestre de dado que
-      // mente. A grade mostra a pessoa em `semPadrao`, que é a informação certa.
-      const temJornada = patterns.some(p => p.base !== "none");
-      if (!temJornada && minhasAusencias.length === 0) continue;
-
       for (const ymd of dias) {
         if (manuais.has(`${pessoa.id}|${ymd}`)) {
           preservados++;
@@ -245,9 +245,20 @@ export const HRService = {
         }
 
         const pattern = patternForDate(patterns, ymd);
-        const dia = resolveDay(pattern, ymd);
-
         const ausencia = minhasAusencias.find(a => a.startDate <= ymd && a.endDate >= ymd);
+
+        // NEM padrão vigente NEM ausência: este dia simplesmente não existe para
+        // esta pessoa, e gravar `isWork=false` faria o relatório dizer "folga"
+        // onde a verdade é "não tem escala".
+        //
+        // A decisão é POR DIA e não por pessoa: por pessoa, lançar um atestado
+        // para quem não tem jornada arrastava o trimestre inteiro para dentro, e
+        // gerar um mês anterior à vigência dos padrões gravava a equipe toda de
+        // folga. Os dois foram medidos.
+        const temDia = (pattern && pattern.base !== "none") || ausencia;
+        if (!temDia) continue;
+
+        const dia = resolveDay(pattern, ymd);
 
         let isWork = dia.isWork;
         let startTime = dia.startTime ?? null;
@@ -302,7 +313,24 @@ export const HRService = {
       if (error) throw new Error(`Falha ao gravar escala: ${error.message}`);
     }
 
-    return { gravados: linhas.length, preservados };
+    // O que existia e deixou de fazer sentido SAI. Sem isto, apagar a ausência de
+    // quem não tem jornada deixava os dias no banco para sempre: a grade seguia
+    // pintando "ausente" e o app de campo seguia dizendo "Folga" para uma
+    // ausência que já não existe. `manual` nunca é apagado — é ajuste de gente.
+    const escritos = new Set(linhas.map(l => `${l.staffId as string}|${l.date as string}`));
+    const orfaos = existentes.filter(
+      s => s.origin !== "manual" && !escritos.has(`${s.staffId}|${s.date}`)
+        && (!opts.staffIds || opts.staffIds.includes(s.staffId)),
+    );
+    for (let i = 0; i < orfaos.length; i += 200) {
+      const { error } = await client
+        .from("staff_shifts")
+        .delete()
+        .in("id", orfaos.slice(i, i + 200).map(s => s.id));
+      if (error) throw new Error(`Falha ao limpar dias que não existem mais: ${error.message}`);
+    }
+
+    return { gravados: linhas.length, preservados, apagados: orfaos.length };
   },
 
   // ─── a grade do mês ────────────────────────────────────────────────────────
@@ -417,7 +445,7 @@ export const HRService = {
         .gte("date", from)
         .lte("date", to)
         .order("date"),
-      this.getPatternsForStaff(staff.id),
+      this.getPatternsForStaff(staff.id, staff.propertyId),
       this.getPeriod(staff.propertyId, today.slice(0, 7)),
       this.getAbsences(staff.propertyId, from, to),
     ]);
@@ -485,6 +513,7 @@ export const HRService = {
       today,
       days,
       patternLabel: patternLabel(vigente),
+      hasSchedule: Boolean(vigente && vigente.base !== "none"),
       published: periodo?.status === "publicada",
     };
   },
@@ -510,8 +539,28 @@ export const HRService = {
       .is("effectiveTo", null);
     if (readError) throw new Error(`Falha ao ler padrão vigente: ${readError.message}`);
 
-    for (const aberto of rows<{ id: string; effectiveFrom: string }>(abertos)) {
-      if (aberto.id === input.id) continue;
+    const listaAbertos = rows<{ id: string; effectiveFrom: string }>(abertos);
+
+    /**
+     * Editar a linha existente ou criar uma vigência nova?
+     *
+     * Só é edição quando a vigência NÃO muda — corrigir um horário digitado
+     * errado no mesmo dia em que se cadastrou. Se a data mudou, é jornada nova:
+     * a anterior é encerrada e fica no histórico.
+     *
+     * A decisão mora aqui e não na tela porque a tela sempre manda o `id` do
+     * padrão vigente. Confiar nela fazia toda edição sobrescrever a linha atual:
+     * o histórico nunca acumulava (a promessa central do modelo novo), e como a
+     * `effectiveFrom` passava a ser hoje, os dias do começo do mês ficavam sem
+     * padrão e viravam folga numa escala já publicada.
+     */
+    const mesmaVigencia = listaAbertos.find(
+      a => a.id === input.id && a.effectiveFrom === input.effectiveFrom,
+    );
+    const idParaAtualizar = mesmaVigencia?.id;
+
+    for (const aberto of listaAbertos) {
+      if (aberto.id === idParaAtualizar) continue;
       const fim = addDaysYMD(input.effectiveFrom, -1);
       // Padrão novo que começa antes do vigente seria buraco de vigência: em vez
       // de gravar dado inconsistente, o anterior é encerrado no próprio início.
@@ -543,8 +592,8 @@ export const HRService = {
       createdByName: actor.name,
     };
 
-    const { data, error } = input.id
-      ? await client.from("staff_work_patterns").update(payload).eq("id", input.id).select(PATTERN_COLS).single()
+    const { data, error } = idParaAtualizar
+      ? await client.from("staff_work_patterns").update(payload).eq("id", idParaAtualizar).select(PATTERN_COLS).single()
       : await client.from("staff_work_patterns").insert(payload).select(PATTERN_COLS).single();
     if (error) throw new Error(`Falha ao salvar padrão: ${error.message}`);
 
@@ -697,10 +746,19 @@ export const HRService = {
     const anterior = addDaysYMD(dias[0], -1).slice(0, 7);
     const diasAnterior = daysOfMonth(anterior);
 
-    const [origem, destino] = await Promise.all([
+    // Só os AJUSTES MANUAIS do mês anterior vêm. Copiar o mês inteiro carimbava
+    // cada dia como `manual`, e aí duas coisas quebravam: as férias de agosto
+    // reapareciam como folga em setembro, e — pior — qualquer ausência lançada
+    // DEPOIS deixava de zerar o dia, porque o gerador preserva `manual`. A pessoa
+    // continuava escalada nas próprias férias.
+    //
+    // O que se replica de um mês para o outro é a exceção, não a regra: a regra
+    // o padrão regenera sozinho.
+    const [todosOrigem, destino] = await Promise.all([
       this.getShifts(propertyId, diasAnterior[0], diasAnterior[diasAnterior.length - 1]),
       this.getShifts(propertyId, dias[0], dias[dias.length - 1]),
     ]);
+    const origem = todosOrigem.filter(s => s.origin === "manual");
 
     const jaManual = new Set(
       destino.filter(s => s.origin === "manual").map(s => `${s.staffId}|${s.date}`),

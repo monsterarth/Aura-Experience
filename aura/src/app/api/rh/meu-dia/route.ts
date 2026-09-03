@@ -16,9 +16,10 @@
 // pessoas sem jornada cadastrada. Devolver 403 aqui quebraria a tela de perfil
 // dos seis apps de campo numa propriedade que não contratou escala.
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, hasRole } from "@/lib/api-auth";
 import { HRService } from "@/services/hr-service";
 import { addDaysYMD } from "@/lib/schedule-engine";
+import type { UserRole } from "@/types/aura";
 
 export const dynamic = "force-dynamic";
 
@@ -63,8 +64,11 @@ export async function GET(request: NextRequest) {
   // Ler a escala de outra pessoa é privilégio de gestão. Sem esta trava, o
   // parâmetro transformaria a rota no vazamento que a fatia 0 acabou de fechar.
   const pedido = searchParams.get("staffId");
-  const GESTAO = ["super_admin", "admin", "manager", "governance"];
-  if (pedido && pedido !== auth.staff.id && !GESTAO.includes(auth.staff.role)) {
+  // `hasRole` e não `includes(role)`: o cargo pode ser SECUNDÁRIO. Na Fazenda há
+  // três pessoas com `governance` como secundário e primário `maid`/`houseman` —
+  // olhar só o primário barraria exatamente quem a lista foi escrita para servir.
+  const GESTAO: UserRole[] = ["super_admin", "admin", "manager", "governance"];
+  if (pedido && pedido !== auth.staff.id && !hasRole(auth.staff.role, auth.staff.secondaryRoles, GESTAO)) {
     return NextResponse.json({ error: "Sem permissão para ver a escala de outra pessoa." }, { status: 403 });
   }
   const alvo = pedido && pedido !== auth.staff.id

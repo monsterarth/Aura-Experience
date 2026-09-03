@@ -369,6 +369,7 @@ DECLARE
   v_on int;
   v_off int;
   v_anchor date;
+  v_checkpoints jsonb;
   v_folga int;
   n int := 0;
 BEGIN
@@ -382,9 +383,35 @@ BEGIN
     v_on := NULL; v_off := NULL; v_anchor := NULL;
     v_folga := NULLIF(r.c->>'fixedDayOff', '')::int;
 
-    IF (r.c->>'cycleReferenceDate') ~ '^\d{4}-\d{2}-\d{2}$' THEN
+    /* ─── A ÂNCORA DO CICLO ────────────────────────────────────────────────
+       O CHECKPOINT VENCE o `cycleReferenceDate` do jsonb, e ler só o jsonb aqui
+       é o erro mais caro que esta migration poderia cometer.
+
+       `resolveReferenceDate` em `schedule-calculator.ts` sempre resolveu assim:
+       o checkpoint mais recente com `effectiveDate <= data` manda, e o jsonb é
+       apenas o fallback de quem não tem checkpoint nenhum. A própria tela dizia
+       "os checkpoints abaixo sobrepõem esta referência".
+
+       São 9 das 19 pessoas em produção, e as notas dizem o que está em jogo:
+       "Inversão com Romina", "Rodízio — ciclo invertido", "Ajuste devido mudança
+       de escala dominical". Pegar o jsonb inverteria a paridade do 12x36 de
+       Rodrigo e Romina em TODOS os dias — a recepção passaria a escalar quem
+       combinou folgar — e moveria o domingo de folga de quatro pessoas do 6x1.
+
+       Os checkpoints são apagados mais adiante neste mesmo script, então eles
+       vão inteiros para `legacyConfig` antes de sumir. */
+    SELECT c."referenceDate" INTO v_anchor
+      FROM staff_schedule_checkpoints c
+      WHERE c."staffId" = r.id AND c."effectiveDate" <= vigencia
+      ORDER BY c."effectiveDate" DESC
+      LIMIT 1;
+
+    IF v_anchor IS NULL AND (r.c->>'cycleReferenceDate') ~ '^\d{4}-\d{2}-\d{2}$' THEN
       v_anchor := (r.c->>'cycleReferenceDate')::date;
     END IF;
+
+    SELECT jsonb_agg(to_jsonb(c) ORDER BY c."effectiveDate") INTO v_checkpoints
+      FROM staff_schedule_checkpoints c WHERE c."staffId" = r.id;
 
     CASE r.c->>'scheduleType'
 
@@ -442,7 +469,12 @@ BEGIN
       NULLIF(r.c->>'startTime', ''), NULLIF(r.c->>'endTime', ''),
       v_weekdays, v_on, v_off, v_anchor,
       v_rules, r.c->'weekdayTimeOverrides',
-      vigencia, r.c, 'Migrado de scheduleConfig em 03/09/2026', 'migration'
+      vigencia,
+      r.c || jsonb_build_object('_checkpoints', COALESCE(v_checkpoints, '[]'::jsonb)),
+      CASE WHEN v_checkpoints IS NULL
+           THEN 'Migrado de scheduleConfig em 03/09/2026'
+           ELSE 'Migrado em 03/09/2026 — âncora veio do checkpoint, não do jsonb' END,
+      'migration'
     )
     ON CONFLICT DO NOTHING;
 

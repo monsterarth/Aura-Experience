@@ -150,6 +150,12 @@ export function PadraoDialog({
         templateId: modeloId || atual?.templateId || null,
         startTime: forma === "none" ? null : startTime,
         endTime: forma === "none" ? null : endTime,
+        // O diálogo não expõe horário por dia da semana, então ele viaja de volta
+        // como está. Sem isto, abrir a jornada do Davi e clicar em Salvar sem
+        // mudar nada apagava o domingo 08:20–16:20 dele — e não havia como
+        // perceber nem desfazer pela tela.
+        weekdayTimeOverrides: atual?.weekdayTimeOverrides ?? null,
+        note: atual?.note ?? null,
         effectiveFrom,
         ...montar(forma, folgaFixa, dias, on, off, ancora, domingo),
       });

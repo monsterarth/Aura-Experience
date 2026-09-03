@@ -172,6 +172,15 @@ export interface MeuDiaResponse {
   }>;
   /** Rótulo do padrão ("6x1", "12x36", "Sem jornada fixa") para o rodapé do card. */
   patternLabel: string;
+  /**
+   * A pessoa tem jornada cadastrada?
+   *
+   * Existe porque "não trabalha neste dia" e "não tem escala" são coisas
+   * diferentes e o `isWork: false` não as distingue. Sem esta bandeira, a tela
+   * que procura "a próxima folga" casava no primeiro dia de quem não tem escala
+   * nenhuma e anunciava amanhã como folga — para 17 pessoas ativas.
+   */
+  hasSchedule: boolean;
   /** Nulo quando o mês ainda não foi publicado — a tela mostra "escala não publicada". */
   published: boolean;
 }
