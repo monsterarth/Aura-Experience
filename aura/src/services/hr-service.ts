@@ -374,6 +374,28 @@ export const HRService = {
     };
   },
 
+  /**
+   * A pessoa cuja escala está sendo pedida, já checando o tenant. Devolve `null`
+   * quando ela é de outra propriedade — 404, não 403: quem não deveria saber que
+   * a pessoa existe não descobre pela diferença de código de erro.
+   */
+  async getStaffForSchedule(
+    staffId: string,
+    propertyIdDoSolicitante: string,
+    ehSuperAdmin: boolean,
+  ): Promise<{ id: string; propertyId: string } | null> {
+    const { data, error } = await db()
+      .from("staff")
+      .select("id, propertyId")
+      .eq("id", staffId)
+      .maybeSingle();
+    if (error) throw new Error(`Falha ao ler funcionário: ${error.message}`);
+    const s = row<{ id: string; propertyId: string }>(data);
+    if (!s) return null;
+    if (!ehSuperAdmin && s.propertyId !== propertyIdDoSolicitante) return null;
+    return s;
+  },
+
   // ─── o dia da pessoa (o que os apps de campo consomem) ─────────────────────
 
   /**

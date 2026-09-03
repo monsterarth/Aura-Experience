@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 /** Quem monta a escala. Centralizado por decisão do dono — uma pessoa monta a de todos os setores. */
 const WRITE_ROLES: UserRole[] = ["super_admin", "admin", "manager"];
 /** Quem consulta. A governança precisa ver quem está de serviço para distribuir faxina. */
-const READ_ROLES: UserRole[] = ["super_admin", "admin", "manager", "governance", "reception"];
+const READ_ROLES: UserRole[] = ["super_admin", "admin", "manager", "governance", "reception", "director"];
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -62,6 +62,17 @@ export async function GET(request: NextRequest) {
       const month = searchParams.get("month");
       if (badMonth(month)) return NextResponse.json({ error: "month no formato YYYY-MM é obrigatório." }, { status: 400 });
       return NextResponse.json(await HRService.getMonthGrid(propertyId, month));
+    }
+
+    // Os dias já materializados de um período. É o que os painéis (gestão e
+    // direção) consomem no lugar de recalcular a escala no navegador.
+    if (section === "dias") {
+      const off = await rhOff(propertyId);
+      if (off) return off;
+      const from = searchParams.get("from");
+      const to = searchParams.get("to");
+      if (!from || !to) return NextResponse.json({ error: "from e to são obrigatórios." }, { status: 400 });
+      return NextResponse.json(await HRService.getShifts(propertyId, from, to));
     }
 
     if (section === "ausencias") {

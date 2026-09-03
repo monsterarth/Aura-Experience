@@ -9,7 +9,7 @@ import { MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
 import { useRouter } from "next/navigation";
 import { postFieldAction } from "@/lib/field-api";
 import { useCloseGuard } from "@/lib/use-discard-guard";
-import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
+import { fetchMeuDia } from "@/lib/meu-dia";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -1094,23 +1094,12 @@ function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showT
 
   useEffect(() => {
     if (!userData?.id) return;
-    const today = new Date();
-    const from = today.toISOString().split('T')[0];
-    Promise.all([
-      fetch(`/api/admin/staff/schedules?staffId=${userData.id}`).then(r => r.json()),
-      fetch(`/api/admin/staff/schedule-overrides?staffId=${userData.id}&from=${from}&to=${from}`).then(r => r.json()),
-      fetch(`/api/admin/staff/schedule-checkpoints?staffId=${userData.id}`).then(r => r.json()),
-    ]).then(([schedules, overrides, checkpoints]) => {
-      const result = resolveEffectiveDaySchedule(
-        userData,
-        Array.isArray(schedules) ? schedules : [],
-        Array.isArray(overrides) ? overrides : [],
-        today,
-        Array.isArray(checkpoints) ? checkpoints : []
-      );
-      if (!result.isWork) { setTodayShift("Folga"); return; }
-      if (result.startTime) setTodayShift(`${result.startTime} às ${result.endTime ?? ""}`);
-    }).catch(() => {});
+    // Uma requisição, e o dia de hoje decidido no servidor em BRT — antes eram
+    // três chamadas e a data saía do relógio do aparelho.
+    fetchMeuDia().then(r => {
+      const hoje = r?.days?.[0];
+      if (hoje) setTodayShift(hoje.label);
+    });
   }, [userData?.id]);
 
   return (

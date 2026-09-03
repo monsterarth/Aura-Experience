@@ -1,10 +1,14 @@
 "use client";
 
-// Dados do painel de gestão: escalas da semana + overrides + checkpoints → métricas derivadas.
+// Dados do painel de gestão.
+//
+// A escala vem MATERIALIZADA do servidor (`/api/admin/rh?section=dias`), não
+// recalculada aqui. Além de tirar o cálculo do navegador, é o que faz o painel
+// enxergar férias, atestado e ajuste manual — o cálculo antigo só conhecia o
+// padrão e mostrava como "trabalhando" quem estava de férias.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { StaffService } from "@/services/staff-service";
-import type { StaffScheduleOverride, ScheduleCheckpoint } from "@/types/aura";
-import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
+import type { StaffShift } from "@/types/hr";
 import {
   addDays, DAY_LABELS, getMonday, getTurno, initialsOf, roleLabel, roleTone, toYMD,
   type BirthdayItem, type DeptItem, type PersonItem, type ShiftEntry, type StaffWithSchedules, type WeekBar,
@@ -12,8 +16,7 @@ import {
 
 export function useHrDashboard(propertyId: string | null | undefined) {
   const [staff, setStaff] = useState<StaffWithSchedules[]>([]);
-  const [overrides, setOverrides] = useState<StaffScheduleOverride[]>([]);
-  const [checkpoints, setCheckpoints] = useState<ScheduleCheckpoint[]>([]);
+  const [dias, setDias] = useState<Map<string, StaffShift>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -27,15 +30,15 @@ export function useHrDashboard(propertyId: string | null | undefined) {
       setError(null);
       try {
         const weekStart = getMonday(new Date());
-        const [scheduleView, ov, cp] = await Promise.all([
+        const [scheduleView, shifts] = await Promise.all([
           StaffService.getPropertyScheduleView(propertyId),
-          StaffService.getPropertyScheduleOverrides(propertyId, toYMD(weekStart), toYMD(addDays(weekStart, 6))),
-          StaffService.getPropertyCheckpoints(propertyId),
+          fetch(`/api/admin/rh?section=dias&propertyId=${propertyId}&from=${toYMD(weekStart)}&to=${toYMD(addDays(weekStart, 6))}`)
+            .then(r => (r.ok ? r.json() : []))
+            .catch(() => []),
         ]);
         if (cancelled) return;
         setStaff(scheduleView);
-        setOverrides(ov);
-        setCheckpoints(cp);
+        setDias(new Map((Array.isArray(shifts) ? (shifts as StaffShift[]) : []).map(d => [`${d.staffId}|${d.date}`, d])));
       } catch {
         if (!cancelled) setError("Não foi possível carregar o painel.");
       } finally {
@@ -51,9 +54,17 @@ export function useHrDashboard(propertyId: string | null | undefined) {
     const weekStart = getMonday(today);
     const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
     const activeStaff = staff.filter(s => s.active && s.role !== "director");
-    const todayOverrides = overrides.filter(o => o.date === todayYMD);
+    const doDia = (staffId: string, ymd: string) => {
+      const d = dias.get(`${staffId}|${ymd}`);
+      return {
+        isWork: Boolean(d?.isWork),
+        startTime: d?.startTime ?? undefined,
+        endTime: d?.endTime ?? undefined,
+        hasOverride: Boolean(d && d.origin !== "pattern"),
+      };
+    };
 
-    const resolvedToday = activeStaff.map(s => ({ s, r: resolveEffectiveDaySchedule(s, s.schedules, todayOverrides, today, checkpoints) }));
+    const resolvedToday = activeStaff.map(s => ({ s, r: doDia(s.id, todayYMD) }));
     const working = resolvedToday.filter(x => x.r.isWork);
     const off = resolvedToday.filter(x => !x.r.isWork);
 
@@ -96,10 +107,9 @@ export function useHrDashboard(propertyId: string | null | undefined) {
 
     const weekBarData: WeekBar[] = weekDays.map((d, i) => {
       const ymd = toYMD(d);
-      const dayOverrides = overrides.filter(o => o.date === ymd);
       let shifts = 0, folgas = 0;
       for (const s of activeStaff) {
-        const r = resolveEffectiveDaySchedule(s, s.schedules, dayOverrides, d, checkpoints);
+        const r = doDia(s.id, ymd);
         if (r.hasOverride && !r.isWork) folgas++;
         else if (r.isWork) shifts++;
       }
@@ -126,7 +136,7 @@ export function useHrDashboard(propertyId: string | null | undefined) {
       maxShifts: Math.max(...weekBarData.map(d => d.shifts), 1),
       totalWeekShifts: weekBarData.reduce((a, d) => a + d.shifts, 0),
     };
-  }, [staff, overrides, checkpoints]);
+  }, [staff, dias]);
 
   return { loading, error, reload, data };
 }

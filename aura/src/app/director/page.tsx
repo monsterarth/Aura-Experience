@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { StaffService } from "@/services/staff-service";
-import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
+import type { StaffShift } from "@/types/hr";
 import { Staff, StaffSchedule, StaffScheduleOverride, ScheduleCheckpoint } from "@/types/aura";
 
 // ── Styles ──────────────────────────────────────────────────────────────────
@@ -1186,8 +1186,7 @@ function FolgasHoje({ todaySchedules, onSelect }: {
 
 function EquipeSection({ propertyId }: { propertyId: string }) {
   const [allStaff, setAllStaff] = useState<StaffWithSchedules[]>([]);
-  const [overrides, setOverrides] = useState<StaffScheduleOverride[]>([]);
-  const [checkpoints, setCheckpoints] = useState<ScheduleCheckpoint[]>([]);
+  const [dias, setDias] = useState<Map<string, StaffShift>>(new Map());
   const [loading, setLoading] = useState(true);
   const [shiftFilter, setShiftFilter] = useState<"todos" | "manhã" | "tarde" | "noite">("todos");
   const [selectedStaff, setSelectedStaff] = useState<{ staff: StaffWithSchedules; eff: { isWork: boolean; startTime?: string; endTime?: string } } | null>(null);
@@ -1202,14 +1201,17 @@ function EquipeSection({ propertyId }: { propertyId: string }) {
   useEffect(() => {
     (async () => {
       try {
-        const [sv, ov, cp] = await Promise.all([
+        // A escala vem MATERIALIZADA do servidor. Antes o painel recalculava no
+        // navegador e por isso mostrava como "trabalhando" quem estava de férias:
+        // o cálculo só conhecia o padrão, não as ausências.
+        const [sv, shifts] = await Promise.all([
           StaffService.getPropertyScheduleView(propertyId),
-          StaffService.getPropertyScheduleOverrides(propertyId, fromYMD, toYMDStr),
-          StaffService.getPropertyCheckpoints(propertyId),
+          fetch(`/api/admin/rh?section=dias&propertyId=${propertyId}&from=${fromYMD}&to=${toYMDStr}`)
+            .then(r => (r.ok ? r.json() : []))
+            .catch(() => []),
         ]);
         setAllStaff(((sv ?? []) as StaffWithSchedules[]).filter(s => OPERATIONAL_ROLES.has(s.role)));
-        setOverrides(ov ?? []);
-        setCheckpoints(cp ?? []);
+        setDias(new Map((Array.isArray(shifts) ? (shifts as StaffShift[]) : []).map(d => [`${d.staffId}|${d.date}`, d])));
       } finally {
         setLoading(false);
       }
@@ -1222,24 +1224,28 @@ function EquipeSection({ propertyId }: { propertyId: string }) {
     </div>
   );
 
-  const todaySchedules = allStaff.map(s => {
-    const ovDay = overrides.filter(o => o.date === todayStr);
-    const eff = resolveEffectiveDaySchedule(s, s.schedules ?? [], ovDay, new Date(todayStr + "T00:00:00"), checkpoints);
-    return { staff: s, eff };
-  });
+  const doDia = (staffId: string, ymd: string) => {
+    const d = dias.get(`${staffId}|${ymd}`);
+    return {
+      isWork: Boolean(d?.isWork),
+      startTime: d?.startTime ?? undefined,
+      endTime: d?.endTime ?? undefined,
+      hasOverride: Boolean(d && d.origin !== "pattern"),
+      reason: d?.note ?? undefined,
+    };
+  };
+
+  const todaySchedules = allStaff.map(s => ({ staff: s, eff: doDia(s.id, todayStr) }));
 
   const onDutyToday = todaySchedules.filter(ts => ts.eff.isWork);
   const activeStaff = allStaff.filter(s => s.active !== false).length;
   const birthdaysThisMonth = allStaff.filter(s => s.birthDate && new Date(s.birthDate + "T12:00:00").getMonth() === currentMonth);
-  const offThisWeek = overrides.filter(o => !o.startTime).length;
+  const offThisWeek = Array.from(dias.values()).filter(d => !d.isWork && d.origin !== "pattern").length;
 
   const weekCounts = Array.from({ length: 7 }, (_, i) => {
     const d = addDays(monday, i);
     const dStr = toYMD(d);
-    const count = allStaff.filter(s => {
-      const ovDay = overrides.filter(o => o.date === dStr);
-      return resolveEffectiveDaySchedule(s, s.schedules ?? [], ovDay, new Date(dStr + "T00:00:00"), checkpoints).isWork;
-    }).length;
+    const count = allStaff.filter(s => doDia(s.id, dStr).isWork).length;
     return { dayLabel: DAY_SHORT[d.getDay()], date: dStr, count };
   });
   const maxCount = Math.max(...weekCounts.map(w => w.count), 1);

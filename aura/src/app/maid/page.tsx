@@ -14,7 +14,7 @@ import { supabase } from "@/lib/supabase";
 import { postFieldAction } from "@/lib/field-api";
 import { HousekeepingTask, Cabin, RestockCatalogItem, RestockRequest, Staff, Structure } from "@/types/aura";
 import { getTaskLabel } from "@/lib/task-ui";
-import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
+import { fetchMeuDia, semanaDe } from "@/lib/meu-dia";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
 import { MaintenanceReportButton } from "@/components/field/MaintenanceReportSheet";
 
@@ -1420,39 +1420,35 @@ function ProfileScreen({
 
   useEffect(() => {
     if (!userData?.id) return;
-    const today = new Date();
-    const from = today.toISOString().split('T')[0];
-    // Compute week range for overrides
-    const dayOfWeek = today.getDay();
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7));
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    const weekFrom = monday.toISOString().split('T')[0];
-    const weekTo = sunday.toISOString().split('T')[0];
+    // Uma requisição traz a semana inteira, com o rótulo já montado. Antes eram
+    // três chamadas e o cálculo da jornada rodava aqui no aparelho — inclusive a
+    // data, que depois das 21h em BRT já era o dia seguinte em UTC.
+    //
+    // A grade sai das datas que o servidor devolveu, não de um calendário montado
+    // aqui: a versão anterior remontava o dia a partir do ano do aparelho, e a
+    // semana que atravessa o Ano-Novo caía no ano errado.
+    fetchMeuDia().then(async hojeResp => {
+      const hojeYmd = hojeResp?.today;
+      if (!hojeYmd) return;
+      const { from, to } = semanaDe(hojeYmd);
+      const semana = await fetchMeuDia(from, to);
+      if (!semana) return;
 
-    Promise.all([
-      fetch(`/api/admin/staff/schedules?staffId=${userData.id}`).then(r => r.json()),
-      fetch(`/api/admin/staff/schedule-overrides?staffId=${userData.id}&from=${weekFrom}&to=${weekTo}`).then(r => r.json()),
-      fetch(`/api/admin/staff/schedule-checkpoints?staffId=${userData.id}`).then(r => r.json()),
-    ]).then(([schedules, overrides, checkpoints]) => {
-      const sch = Array.isArray(schedules) ? schedules : [];
-      const ov = Array.isArray(overrides) ? overrides : [];
-      const cp = Array.isArray(checkpoints) ? checkpoints : [];
+      const hoje = semana.days.find(d => d.date === hojeYmd);
+      if (hoje) setTodayShift(hoje.label);
 
-      // Today's shift
-      const todayResult = resolveEffectiveDaySchedule(userData, sch, ov, today, cp);
-      if (!todayResult.isWork) { setTodayShift("Folga"); }
-      else if (todayResult.startTime) setTodayShift(`${todayResult.startTime} às ${todayResult.endTime ?? ""}`);
-
-      // Weekly grid
-      const days = getWeekDays(today).map(d => {
-        const dayDate = new Date(today.getFullYear(), d.month, d.date);
-        const result = resolveEffectiveDaySchedule(userData, sch, ov, dayDate, cp);
-        return { ...d, work: result.isWork, time: result.startTime ?? undefined };
-      });
-      setWeekDays(days);
-    }).catch(() => {});
+      const DOW_LABELS = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
+      setWeekDays(
+        semana.days.slice(0, 7).map((d, i) => ({
+          dow: DOW_LABELS[i],
+          date: Number(d.date.slice(-2)),
+          month: Number(d.date.slice(5, 7)) - 1,
+          work: d.isWork,
+          time: d.startTime ?? undefined,
+          today: d.date === hojeYmd,
+        })),
+      );
+    });
   }, [userData?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

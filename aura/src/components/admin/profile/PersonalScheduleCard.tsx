@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Staff, StaffSchedule, StaffScheduleOverride, ScheduleCheckpoint } from "@/types/aura";
-import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
-import { StaffService } from "@/services/staff-service";
+import { Staff } from "@/types/aura";
+import { fetchMeuDia, semanaDe, type MeuDiaItem } from "@/lib/meu-dia";
 import { CalendarDays, Clock } from "lucide-react";
 
 const DAYS_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -30,27 +29,25 @@ interface Props {
 }
 
 export function PersonalScheduleCard({ staff }: Props) {
-  const [schedules, setSchedules] = useState<StaffSchedule[]>([]);
-  const [overrides, setOverrides] = useState<StaffScheduleOverride[]>([]);
-  const [checkpoints, setCheckpoints] = useState<ScheduleCheckpoint[]>([]);
+  const [dias, setDias] = useState<Map<string, MeuDiaItem>>(new Map());
+  const [rotulo, setRotulo] = useState<string>("—");
   const [loading, setLoading] = useState(true);
 
   const weekDates = getWeekDates();
 
+  // Uma requisição no lugar de três — e a leitura de `staff_schedules` que
+  // acontecia pelo client do browser sai junto: era o padrão que pendura no lock
+  // frio (ver o histórico de `field-app-browser-write-hangs`).
   useEffect(() => {
     if (!staff.id) return;
-    const from = toYMD(weekDates[0]);
-    const to = toYMD(weekDates[6]);
-
-    Promise.all([
-      StaffService.getStaffSchedules(staff.id).catch(() => [] as StaffSchedule[]),
-      StaffService.getScheduleOverrides(staff.id, from, to).catch(() => [] as StaffScheduleOverride[]),
-      StaffService.getStaffCheckpoints(staff.id).catch(() => [] as ScheduleCheckpoint[]),
-    ]).then(([s, o, c]) => {
-      setSchedules(s);
-      setOverrides(o);
-      setCheckpoints(c);
-    }).finally(() => setLoading(false));
+    const { from, to } = semanaDe(toYMD(new Date()));
+    fetchMeuDia(from, to, staff.id)
+      .then(r => {
+        if (!r) return;
+        setDias(new Map(r.days.map(d => [d.date, d])));
+        setRotulo(r.patternLabel);
+      })
+      .finally(() => setLoading(false));
   }, [staff.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const today = toYMD(new Date());
@@ -78,8 +75,12 @@ export function PersonalScheduleCard({ staff }: Props) {
           {weekDates.map((date, i) => {
             const dateStr = toYMD(date);
             const isToday = dateStr === today;
-            const dayOverrides = overrides.filter(o => o.date === dateStr);
-            const result = resolveEffectiveDaySchedule(staff, schedules, dayOverrides, date, checkpoints);
+            const dia = dias.get(dateStr);
+            const result = {
+              isWork: Boolean(dia?.isWork),
+              startTime: dia?.startTime ?? undefined,
+              hasOverride: Boolean(dia?.hasOverride),
+            };
 
             return (
               <div
@@ -162,8 +163,8 @@ export function PersonalScheduleCard({ staff }: Props) {
           </div>
           <div className="flex items-center gap-1.5">
             <Clock size={11} className="text-muted-foreground" />
-            <span className="text-[11px] text-muted-foreground capitalize">
-              {staff.scheduleType ?? "custom"}
+            <span className="text-[11px] text-muted-foreground">
+              {rotulo}
             </span>
           </div>
         </div>

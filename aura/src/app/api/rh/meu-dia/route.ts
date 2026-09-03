@@ -5,9 +5,11 @@
 // escrever uma linha de texto — seis apps × três chamadas, mais o cálculo rodando
 // no navegador de cada um.
 //
-// Aberto a QUALQUER cargo logado de propósito: a pessoa só consegue ler a própria
-// escala, porque o `staffId` vem da sessão e não da query. Não existe parâmetro
-// para pedir a escala de outro — para isso existe `/api/admin/rh`, com cargo.
+// Aberto a QUALQUER cargo logado: sem `staffId`, a pessoa lê a PRÓPRIA escala,
+// porque o id vem da sessão. Com `staffId`, só passa quem é a própria pessoa ou
+// quem tem cargo de gestão — é o que permite o card de escala do perfil funcionar
+// tanto em `/admin/perfil` quanto em `/equipe/[staffId]` sem abrir a escala de
+// todo mundo para todo mundo.
 //
 // Sem gate de módulo: com `rh` desligado a resposta simplesmente não tem padrão e
 // o app mostra "Sem escala definida", que é o que ele já mostra hoje para as 16
@@ -58,13 +60,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Funcionário sem propriedade." }, { status: 400 });
   }
 
+  // Ler a escala de outra pessoa é privilégio de gestão. Sem esta trava, o
+  // parâmetro transformaria a rota no vazamento que a fatia 0 acabou de fechar.
+  const pedido = searchParams.get("staffId");
+  const GESTAO = ["super_admin", "admin", "manager", "governance"];
+  if (pedido && pedido !== auth.staff.id && !GESTAO.includes(auth.staff.role)) {
+    return NextResponse.json({ error: "Sem permissão para ver a escala de outra pessoa." }, { status: 403 });
+  }
+  const alvo = pedido && pedido !== auth.staff.id
+    ? await HRService.getStaffForSchedule(pedido, auth.staff.propertyId, auth.staff.role === "super_admin")
+    : { id: auth.staff.id, propertyId: auth.staff.propertyId };
+
+  if (!alvo) return NextResponse.json({ error: "Funcionário não encontrado." }, { status: 404 });
+
   try {
-    const resposta = await HRService.getMeuDia(
-      { id: auth.staff.id, propertyId: auth.staff.propertyId },
-      from,
-      fim,
-      today,
-    );
+    const resposta = await HRService.getMeuDia(alvo, from, fim, today);
     return NextResponse.json(resposta);
   } catch (e) {
     return NextResponse.json(

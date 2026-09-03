@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { isModuleOn } from "@/lib/modules";
 import { StaffService } from "@/services/staff-service";
-import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
+import { fetchMeuDia } from "@/lib/meu-dia";
 import { PersonalScheduleCard } from "./PersonalScheduleCard";
 import { ScrapWall } from "./ScrapWall";
 import { TeammatesList } from "./TeammatesList";
@@ -114,43 +114,24 @@ export function ProfileView({ staffId, isOwnProfile, profileBasePath = "/admin/p
       .then(data => setWeekActivityCount(data.count ?? 0))
       .catch(() => setWeekActivityCount(0));
 
-    // Card 2: próxima folga
-    if (!staff.scheduleType) { setNextDayOff(null); return; }
+    // Card 2: próxima folga.
+    //
+    // Uma requisição de 30 dias no lugar de três chamadas mais uma varredura dia
+    // a dia no navegador — e agora enxerga férias e atestado, que o cálculo
+    // antigo não conhecia.
+    const DAY_NAMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const amanha = new Date(Date.now() - 3 * 3600_000 + 86_400_000).toISOString().slice(0, 10);
+    const daqui30 = new Date(Date.now() - 3 * 3600_000 + 30 * 86_400_000).toISOString().slice(0, 10);
 
-    const toYMD = (d: Date) => {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${dd}`;
-    };
-
-    const tomorrow = new Date(now);
-    tomorrow.setDate(now.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-    const rangeEnd = new Date(now);
-    rangeEnd.setDate(now.getDate() + 30);
-
-    Promise.all([
-      StaffService.getStaffSchedules(staff.id).catch(() => [] as StaffSchedule[]),
-      StaffService.getScheduleOverrides(staff.id, toYMD(tomorrow), toYMD(rangeEnd)).catch(() => [] as StaffScheduleOverride[]),
-      StaffService.getStaffCheckpoints(staff.id).catch(() => [] as ScheduleCheckpoint[]),
-    ]).then(([schedules, overrides, checkpoints]) => {
-      const DAY_NAMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-      for (let i = 1; i <= 30; i++) {
-        const date = new Date(now);
-        date.setDate(now.getDate() + i);
-        date.setHours(12, 0, 0, 0);
-        const dateStr = toYMD(date);
-        const dayOverrides = overrides.filter(o => o.date === dateStr);
-        const result = resolveEffectiveDaySchedule(staff, schedules, dayOverrides, date, checkpoints);
-        if (!result.isWork) {
-          setNextDayOff(DAY_NAMES[date.getDay()]);
-          return;
-        }
-      }
-      setNextDayOff(null);
-    }).catch(() => setNextDayOff(null));
-  }, [staff?.id, staff?.scheduleType]);
+    fetchMeuDia(amanha, daqui30, staff.id)
+      .then(r => {
+        const folga = r?.days.find(d => !d.isWork);
+        if (!folga) { setNextDayOff(null); return; }
+        const [y, m, d] = folga.date.split("-").map(Number);
+        setNextDayOff(DAY_NAMES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]);
+      })
+      .catch(() => setNextDayOff(null));
+  }, [staff?.id]);
 
   useEffect(() => {
     if (isOwnProfile && authUser) setStaff(authUser);
