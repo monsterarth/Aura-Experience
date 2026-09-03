@@ -27,7 +27,6 @@ import {
   eachDay,
   daysOfMonth,
   addDaysYMD,
-  diffDays,
   dowOf,
   minutesBetween,
   patternForDate,
@@ -707,29 +706,46 @@ export const HRService = {
       destino.filter(s => s.origin === "manual").map(s => `${s.staffId}|${s.date}`),
     );
 
-    // Alinha pelo DIA DA SEMANA, não pelo número do dia: copiar "dia 1 → dia 1"
-    // jogaria a folga de domingo para uma quarta.
-    const deslocamento = diffDays(dias[0], diasAnterior[0]);
-    const alinhado = deslocamento - (deslocamento % 7);
+    const primeiroAnterior = diasAnterior[0];
+    const ultimoAnterior = diasAnterior[diasAnterior.length - 1];
+    const porChave = new Map(origem.map(s => [`${s.staffId}|${s.date}`, s]));
 
-    const linhas = origem
-      .map(s => {
-        const novaData = addDaysYMD(s.date, alinhado);
-        return { s, novaData };
+    /**
+     * O dia de ORIGEM de um dia do mês novo.
+     *
+     * Anda para trás de SETE em SETE — o alinhamento tem que ser por dia da
+     * semana, senão a folga de domingo cai numa quarta. Percorrer o mês DE
+     * DESTINO (e não o de origem, empurrando para a frente por um deslocamento
+     * fixo) é o que garante cobertura completa: com um deslocamento único de 28
+     * dias, os últimos dias do mês ficavam sem cópia — medido, 2 dias em
+     * setembro e 3 em outubro e dezembro.
+     */
+    function origemDe(ymd: string): string | null {
+      for (let d = addDaysYMD(ymd, -7); d >= primeiroAnterior; d = addDaysYMD(d, -7)) {
+        if (d <= ultimoAnterior) return d;
+      }
+      return null;
+    }
+
+    const pessoas = Array.from(new Set(origem.map(s => s.staffId)));
+    const linhas = dias
+      .flatMap(ymd => {
+        const de = origemDe(ymd);
+        if (!de) return [];
+        return pessoas.map(staffId => ({ staffId, ymd, s: porChave.get(`${staffId}|${de}`) }));
       })
-      .filter(({ novaData }) => novaData >= dias[0] && novaData <= dias[dias.length - 1])
-      .filter(({ s, novaData }) => !jaManual.has(`${s.staffId}|${novaData}`))
-      .map(({ s, novaData }) => ({
-        staffId: s.staffId,
+      .filter(x => x.s && !jaManual.has(`${x.staffId}|${x.ymd}`))
+      .map(({ staffId, ymd, s }) => ({
+        staffId,
         propertyId,
-        date: novaData,
-        isWork: s.isWork,
-        startTime: s.startTime,
-        endTime: s.endTime,
-        plannedMinutes: s.plannedMinutes,
+        date: ymd,
+        isWork: s!.isWork,
+        startTime: s!.startTime,
+        endTime: s!.endTime,
+        plannedMinutes: s!.plannedMinutes,
         origin: "manual" as ShiftOrigin,
         absenceId: null,
-        note: s.note,
+        note: s!.note,
         updatedBy: actor.id,
         updatedByName: actor.name,
         updatedAt: new Date().toISOString(),
