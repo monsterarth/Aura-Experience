@@ -82,7 +82,7 @@ export function BookingPanel({ area, stay, property, lang, onBooked }: BookingPa
     const loadSlots = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/guest/structure-slots?propertyId=${property.id}&structureId=${area.id}&date=${today}`);
+            const res = await fetch(`/api/guest/structure-slots?propertyId=${property.id}&structureId=${area.id}&date=${today}&stayId=${stay.id}&accessCode=${encodeURIComponent(stay.accessCode)}`);
             const bookings: StructureBooking[] = await res.json();
             setSlots(StructureService.generateTimeSlots(area, bookings, unit?.id));
             setSelected(null);

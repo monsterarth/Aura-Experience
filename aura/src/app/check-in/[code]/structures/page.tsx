@@ -283,10 +283,10 @@ function StructuresWizard() {
     // Fetch ALL slots for the day (no time filter — shown with color states)
     useEffect(() => {
         async function fetchSlots() {
-            if (!property || !selectedStructure || !selectedDate) return;
+            if (!property || !selectedStructure || !selectedDate || !stay) return;
             try {
                 const res = await fetch(
-                    `/api/guest/structure-slots?propertyId=${property.id}&structureId=${selectedStructure.id}&date=${selectedDate}`
+                    `/api/guest/structure-slots?propertyId=${property.id}&structureId=${selectedStructure.id}&date=${selectedDate}&stayId=${stay.id}&accessCode=${encodeURIComponent(stay.accessCode)}`
                 );
                 const bookings: StructureBooking[] = await res.json();
                 setDayBookings(bookings);
@@ -307,9 +307,9 @@ function StructuresWizard() {
     }, [selectedDate, selectedStructure, selectedUnit, property, step]);
 
     const reloadSlots = async () => {
-        if (!property || !selectedStructure || !selectedDate) return;
+        if (!property || !selectedStructure || !selectedDate || !stay) return;
         const res = await fetch(
-            `/api/guest/structure-slots?propertyId=${property.id}&structureId=${selectedStructure.id}&date=${selectedDate}`
+            `/api/guest/structure-slots?propertyId=${property.id}&structureId=${selectedStructure.id}&date=${selectedDate}&stayId=${stay.id}&accessCode=${encodeURIComponent(stay.accessCode)}`
         );
         const bookings: StructureBooking[] = await res.json();
         setDayBookings(bookings);

@@ -46,7 +46,16 @@ export async function GET(request: NextRequest) {
         : all.filter(r => stayId && r.stayId === stayId);
     const own = stayId ? all.find(r => r.stayId === stayId) ?? null : null;
 
-    return NextResponse.json({ reviews, public: pub, own });
+    // Não vaza identidade de terceiro: a lista pública ia com stayId e guestId de
+    // todo mundo (`select("*")`). O portal só usa nota, comentário e o primeiro
+    // nome (guestName). O casamento por stayId acima já rodou no servidor.
+    const strip = (r: StructureReview | null) => {
+        if (!r) return null;
+        const { stayId: _s, guestId: _g, ...safe } = r;
+        return safe;
+    };
+
+    return NextResponse.json({ reviews: reviews.map(strip), public: pub, own: strip(own) });
 }
 
 export async function POST(request: NextRequest) {
