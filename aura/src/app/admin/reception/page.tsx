@@ -8,11 +8,14 @@ import { T } from "@/lib/admin-tokens";
 import { PageShell, PageHeader, KpiGrid, KpiCard, Loadable, PageSkeleton, EmptyState, Pill } from "@/components/aura";
 import { useReceptionLive } from "./_components/useReceptionLive";
 import { AlertsCard, BreakfastCard, GovernanceCard, GuestRequestsCard, StructuresAgendaCard } from "./_components/ReceptionCards";
+import { PetExceptionDialog, type PetExceptionItem } from "@/components/admin/PetExceptionDialog";
 
 export default function ReceptionDashboard() {
   const { loading: propLoading } = useProperty();
   const r = useReceptionLive();
   const { stats, property } = r;
+  // Decidir a exceção de pet daqui: era preciso abrir a estadia, e ninguém abre.
+  const [petExc, setPetExc] = React.useState<PetExceptionItem | null>(null);
 
   if (!propLoading && !property) {
     return (
@@ -57,7 +60,7 @@ export default function ReceptionDashboard() {
             <StructuresAgendaCard items={r.structureAgenda} />
           </div>
           <div className="flex flex-col gap-4 min-w-0">
-            <AlertsCard items={r.alertItems} />
+            <AlertsCard items={r.alertItems} onPetException={(i) => setPetExc(i as PetExceptionItem)} />
             <GuestRequestsCard requests={r.pendingRequests} />
           </div>
           <div className="flex flex-col gap-4 min-w-0">
@@ -71,6 +74,13 @@ export default function ReceptionDashboard() {
           </div>
         </div>
       </Loadable>
+
+      <PetExceptionDialog
+        item={petExc}
+        open={!!petExc}
+        onClose={() => setPetExc(null)}
+        onDecided={() => r.reload()}
+      />
     </PageShell>
   );
 }

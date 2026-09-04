@@ -52,6 +52,8 @@ const TRIGGER_DETAILS: Record<string, { label: string, desc: string }> = {
   'checkout_thanks': { label: 'Agradecimento', desc: 'Disparado quando a conta é encerrada (Check-out).' },
   'nps_survey': { label: 'Pesquisa NPS', desc: 'Enviado após a saída do hóspede.' },
   'structure_booking_confirmed': { label: 'Agendamento de Estrutura', desc: 'Disparado ao confirmar a reserva de uma estrutura (quadra/bicicleta).' },
+  'pet_exception_approved': { label: 'Pet — exceção aprovada', desc: 'Disparado quando a recepção aprova um pedido de exceção à Política Pet.' },
+  'pet_exception_refused': { label: 'Pet — exceção recusada', desc: 'Disparado quando a recepção recusa o pedido. Texto delicado: escreva com cuidado.' },
 };
 
 export default function AutomationSettingsPage() {

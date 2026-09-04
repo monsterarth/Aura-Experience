@@ -98,6 +98,8 @@ const translations = {
     petBlockedCount: "Não analisamos pedidos acima de {max} animais",
     petBlockedWeight: "Não analisamos pedidos de animal acima de {max} kg",
     petBlockedUnder: "Peso abaixo de {max} kg — confira o valor informado",
+    petExcSuccessTitle: "Pedido do pet em análise",
+    petExcSuccessBody: "Seu pré-check-in está concluído, mas a hospedagem do animal ainda depende de autorização. Vamos avaliar e entrar em contato. Enquanto não houver autorização expressa, não há autorização.",
     termsTitle: "Termos e Aceite",
     termsDesc: "Para finalizar o seu pré-check-in, por favor, leia e concorde com as políticas da nossa propriedade.",
     agree: "Li e concordo com a",
@@ -214,6 +216,8 @@ const translations = {
     petBlockedCount: "We do not review requests above {max} animals",
     petBlockedWeight: "We do not review requests for animals above {max} kg",
     petBlockedUnder: "Weight below {max} kg — please check the value entered",
+    petExcSuccessTitle: "Pet request under review",
+    petExcSuccessBody: "Your pre-check-in is complete, but hosting the animal still depends on authorization. We will assess it and get in touch. Until there is express authorization, there is no authorization.",
     termsTitle: "Terms and Agreement",
     termsDesc: "To complete your pre-check-in, please read and agree to our property's policies.",
     agree: "I have read and agree to the",
@@ -330,6 +334,8 @@ const translations = {
     petBlockedCount: "No analizamos solicitudes de más de {max} animales",
     petBlockedWeight: "No analizamos solicitudes de animales de más de {max} kg",
     petBlockedUnder: "Peso por debajo de {max} kg — revise el valor informado",
+    petExcSuccessTitle: "Solicitud de la mascota en análisis",
+    petExcSuccessBody: "Su pre-check-in está concluido, pero el alojamiento del animal aún depende de autorización. Lo evaluaremos y nos pondremos en contacto. Mientras no haya autorización expresa, no hay autorización.",
     termsTitle: "Términos y Aceptación",
     termsDesc: "Para finalizar su pre-check-in, lea y acepte las políticas de nuestra propiedad.",
     agree: "He leído y acepto la",
@@ -516,11 +522,14 @@ export default function UnifiedPreCheckin() {
     tiposDocumento: FnrhDomain[];
   } | null>(null);
 
-  const [policyModal, setPolicyModal] = useState<'general' | 'privacy' | 'pet' | null>(null);
+  const [policyModal, setPolicyModal] = useState<'general' | 'privacy' | 'pet' | 'petExc' | null>(null);
 
   const [agreedGeneral, setAgreedGeneral] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
   const [agreedPet, setAgreedPet] = useState(false);
+  // A exceção NÃO substitui a política base: ela acrescenta. Quem traz 2 animais
+  // continua sujeito a tudo o que vale para 1, e por isso assina os dois textos.
+  const [agreedPetExc, setAgreedPetExc] = useState(false);
 
   const [propertyData, setPropertyData] = useState<any>(null);
   const [guest, setGuest] = useState<any>({
@@ -721,7 +730,8 @@ export default function UnifiedPreCheckin() {
 
     if (!agreedGeneral) errors.push(t.polGen);
     if (!agreedPrivacy) errors.push(t.polPriv);
-    if (stay.hasPet && !agreedPet) errors.push(isPetExc ? t.polPetExc : t.polPet);
+    if (stay.hasPet && !agreedPet) errors.push(t.polPet);
+    if (stay.hasPet && isPetExc && !agreedPetExc) errors.push(t.polPetExc);
     // Único bloqueio que sobrou no formulário: acima do teto absoluto não vira
     // nem pedido. Tudo entre a política base e o teto passa como exceção.
     if (stay.hasPet && petCheck.band === "blocked") errors.push(t.petBlockedTitle);
@@ -868,7 +878,7 @@ export default function UnifiedPreCheckin() {
         ...petsForWrite,
         // O aceite deixa de ser decorativo: é ele que sustenta a análise da exceção
         // e a taxa. Sem gravar, não há base para recusar entrada nem para cobrar.
-        petPolicyAcceptedAt: petsForWrite.hasPet && agreedPet ? nowIso : null,
+        petPolicyAcceptedAt: petsForWrite.hasPet && agreedPet && (!isPetExc || agreedPetExc) ? nowIso : null,
         petException: petsForWrite.hasPet && isPetExc
           ? { status: "pending", reasons: petReasonsPt, requestedAt: nowIso }
           : null,
@@ -1090,6 +1100,15 @@ export default function UnifiedPreCheckin() {
           <CheckCircle2 size={80} className="mx-auto text-green-500" />
           <h1 className="text-3xl font-black text-foreground uppercase tracking-tighter">{t.successTitle}</h1>
           <p className="text-muted-foreground">{t.successDesc}</p>
+
+          {/* O hóspede precisa sair daqui sabendo que o pet ainda não está aprovado.
+              Sem isto, "pré-check-in concluído" soa como "pode trazer". */}
+          {isPetExc && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 text-left space-y-2">
+              <p className="text-sm font-black uppercase tracking-tight text-amber-700">{t.petExcSuccessTitle}</p>
+              <p className="text-xs text-amber-800/90 leading-relaxed">{t.petExcSuccessBody}</p>
+            </div>
+          )}
 
           <div className="p-6 bg-secondary rounded-3xl border border-border shadow-sm">
             {isSeparatedFromGroup && (
@@ -1997,7 +2016,14 @@ export default function UnifiedPreCheckin() {
             {stay.hasPet && (
               <label className="flex items-start gap-4 cursor-pointer group p-3 hover:bg-orange-500/5 rounded-2xl transition-colors border border-orange-500/10">
                 <input type="checkbox" checked={agreedPet} onChange={e => setAgreedPet(e.target.checked)} className="mt-1 w-5 h-5 accent-orange-500 cursor-pointer shrink-0" />
-                <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => { e.preventDefault(); setPolicyModal('pet'); }} className={cn("hover:underline font-bold transition-all", isPetExc ? "text-amber-600" : "text-orange-500")}>{isPetExc ? t.polPetExc : t.polPet}</button> *</span>
+                <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => { e.preventDefault(); setPolicyModal('pet'); }} className="text-orange-500 hover:underline font-bold transition-all">{t.polPet}</button> *</span>
+              </label>
+            )}
+
+            {stay.hasPet && isPetExc && (
+              <label className="flex items-start gap-4 cursor-pointer group p-3 hover:bg-amber-500/5 rounded-2xl transition-colors border border-amber-500/20">
+                <input type="checkbox" checked={agreedPetExc} onChange={e => setAgreedPetExc(e.target.checked)} className="mt-1 w-5 h-5 accent-amber-500 cursor-pointer shrink-0" />
+                <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => { e.preventDefault(); setPolicyModal('petExc'); }} className="text-amber-600 hover:underline font-bold transition-all">{t.polPetExc}</button> *</span>
               </label>
             )}
           </div>
@@ -2079,15 +2105,15 @@ export default function UnifiedPreCheckin() {
         <div className="fixed inset-0 z-[110] flex items-end md:items-center justify-center p-4 md:p-8 bg-background/90 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-card border border-border w-full max-w-2xl max-h-[85vh] rounded-[32px] shadow-2xl flex flex-col animate-in slide-in-from-bottom-8 md:zoom-in-95">
             <div className="p-6 border-b border-border flex justify-between items-center shrink-0">
-              <h3 className={cn("font-black text-xl flex items-center gap-2", policyModal === 'pet' ? "text-orange-500" : "text-primary")}>
-                {policyModal === 'general' ? <FileText /> : policyModal === 'privacy' ? <FileText /> : <Dog />}
-                {policyModal === 'general' ? t.polGen : policyModal === 'privacy' ? t.polPriv : isPetExc ? t.polPetExc : t.polPet}
+              <h3 className={cn("font-black text-xl flex items-center gap-2", policyModal === 'pet' || policyModal === 'petExc' ? "text-orange-500" : "text-primary")}>
+                {policyModal === 'general' || policyModal === 'privacy' ? <FileText /> : <Dog />}
+                {policyModal === 'general' ? t.polGen : policyModal === 'privacy' ? t.polPriv : policyModal === 'petExc' ? t.polPetExc : t.polPet}
               </h3>
               <button type="button" onClick={() => setPolicyModal(null)} className="p-2 hover:bg-secondary rounded-full text-muted-foreground transition-colors"><X size={20} /></button>
             </div>
 
             <div className="p-6 overflow-y-auto custom-scrollbar text-sm text-foreground whitespace-pre-wrap leading-relaxed font-medium">
-              {policyModal === 'general' ? generalPolicyText : policyModal === 'privacy' ? privacyPolicyText : isPetExc ? petExcPolicyText : petPolicyText}
+              {policyModal === 'general' ? generalPolicyText : policyModal === 'privacy' ? privacyPolicyText : policyModal === 'petExc' ? petExcPolicyText : petPolicyText}
             </div>
 
             <div className="p-6 border-t border-border shrink-0 bg-secondary/50 rounded-b-[32px]">
@@ -2095,8 +2121,9 @@ export default function UnifiedPreCheckin() {
                 if (policyModal === 'general') setAgreedGeneral(true);
                 if (policyModal === 'privacy') setAgreedPrivacy(true);
                 if (policyModal === 'pet') setAgreedPet(true);
+                if (policyModal === 'petExc') setAgreedPetExc(true);
                 setPolicyModal(null);
-              }} className={cn("w-full py-4 text-primary-foreground font-black uppercase tracking-widest rounded-xl hover:opacity-90 transition-all", policyModal === 'pet' ? "bg-orange-500 text-white" : "bg-primary")}>
+              }} className={cn("w-full py-4 text-primary-foreground font-black uppercase tracking-widest rounded-xl hover:opacity-90 transition-all", policyModal === 'pet' || policyModal === 'petExc' ? "bg-orange-500 text-white" : "bg-primary")}>
                 {t.readAgree}
               </button>
             </div>

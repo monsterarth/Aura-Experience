@@ -53,4 +53,6 @@ export type AlertItem = {
   title: string;
   desc: string;
   time: string;
+  /** Só em `pet_exception`: o pedido inteiro, para o card abrir o modal de decisão. */
+  petException?: unknown;
 };

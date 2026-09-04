@@ -193,6 +193,8 @@ export default function AutomationsQueuePage() {
       'checkout_thanks': 'Agradecimento (Check-out)',
       'nps_survey': 'Pesquisa NPS',
       'structure_booking_confirmed': 'Agendamento de Estrutura',
+      'pet_exception_approved': 'Pet — exceção aprovada',
+      'pet_exception_refused': 'Pet — exceção recusada',
     };
     return trigger ? (triggers[trigger] || trigger) : 'Gatilho Desconhecido';
   };

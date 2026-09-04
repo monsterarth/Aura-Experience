@@ -187,6 +187,7 @@ export function useReceptionLive() {
           title: "Pet fora da política — decisão pendente",
           desc: `${p.guestName}${p.cabinName ? ` · ${p.cabinName}` : ""} — ${(p.reasons ?? []).join(" · ") || "fora da Política Pet"}.${marcas.length ? ` (${marcas.join("; ")})` : ""}`,
           time: dias <= 0 ? "chega hoje" : dias === 1 ? "chega amanhã" : `chega em ${dias} dias`,
+          petException: p,
         };
       }),
       ...detractors.map((r, i) => {

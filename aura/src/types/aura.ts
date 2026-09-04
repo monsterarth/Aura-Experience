@@ -931,6 +931,11 @@ export type AutomationTriggerEvent =
   | 'checkout_thanks'
   | 'nps_survey'
   | 'structure_booking_confirmed'
+  // Desfecho do pedido de exceção à Política Pet. Decidido em 03/09: o hóspede
+  // passa a ser avisado por WhatsApp — antes a decisão era registrada e o contato
+  // acontecia por fora.
+  | 'pet_exception_approved'
+  | 'pet_exception_refused'
   | 'custom_scheduled';
 
 // --- REGRAS DE AUTOMAÇÃO (Ligadas/Desligadas pela Pousada) ---

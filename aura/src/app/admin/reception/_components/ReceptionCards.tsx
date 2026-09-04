@@ -99,7 +99,11 @@ export function StructuresAgendaCard({ items }: { items: StructureAgendaItem[] }
 }
 
 /** Detratores e falhas de envio nas últimas 48h. */
-export function AlertsCard({ items }: { items: AlertItem[] }) {
+export function AlertsCard({ items, onPetException }: {
+  items: AlertItem[];
+  /** Abre o modal de decisão. Sem ele, o item de pet segue só informando. */
+  onPetException?: (item: unknown) => void;
+}) {
   const hasAlerts = items.length > 0;
   return (
     <Card tone={hasAlerts ? "red" : undefined} header={{ icon: AlertTriangle, tone: hasAlerts ? "red" : "neutral", title: "Atenção requerida", sub: "últimas 48 horas", aside: hasAlerts ? <Pill tone="red" label={String(items.length)} /> : undefined }}>
@@ -107,8 +111,17 @@ export function AlertsCard({ items }: { items: AlertItem[] }) {
         <EmptyState compact icon={CheckCircle2} tone="green" title="Nenhum alerta" description="Nada exige atenção nas últimas 48h." />
       ) : (
         <div style={stack}>
-          {items.map(a => (
-            <div key={a.id} style={{ ...tile, background: T.card, display: "flex", gap: 10 }}>
+          {items.map(a => {
+          const clicavel = a.type === "pet_exception" && !!onPetException && !!a.petException;
+          return (
+            <div
+              key={a.id}
+              onClick={clicavel ? () => onPetException!(a.petException) : undefined}
+              role={clicavel ? "button" : undefined}
+              tabIndex={clicavel ? 0 : undefined}
+              onKeyDown={clicavel ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPetException!(a.petException); } } : undefined}
+              style={{ ...tile, background: T.card, display: "flex", gap: 10, cursor: clicavel ? "pointer" : undefined }}
+            >
               <span style={{ flexShrink: 0, marginTop: 2 }}>
                 {a.type === "review" ? <Star size={15} color={T.amber} fill={T.amber} />
                   : a.type === "pet_exception" ? <Dog size={15} color={T.red} />
@@ -117,10 +130,13 @@ export function AlertsCard({ items }: { items: AlertItem[] }) {
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: T.text }}>{a.title}</div>
                 <div style={{ fontSize: 12, color: T.muted, marginTop: 2, lineHeight: 1.4 }}>{a.desc}</div>
-                <div style={{ fontSize: 10, color: T.muted2, marginTop: 6, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase" }}>{a.time}</div>
+                <div style={{ fontSize: 10, color: T.muted2, marginTop: 6, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase" }}>
+                  {a.time}{clicavel ? " · toque para decidir" : ""}
+                </div>
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
     </Card>

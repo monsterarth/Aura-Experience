@@ -6,7 +6,8 @@ import { Dialog } from "@/components/aura/Dialog";
 import { useIsMobile, useMounted } from "@/components/aura/hooks";
 import { useOverlayRoot } from "@/components/aura/OverlayProvider";
 import { useRouter, usePathname } from "next/navigation";
-import { Bell, MessageSquare, ShoppingBag, Calendar, X, ChevronRight } from "lucide-react";
+import { Bell, MessageSquare, ShoppingBag, Calendar, X, ChevronRight, Dog } from "lucide-react";
+import { PetExceptionDialog, type PetExceptionItem } from "@/components/admin/PetExceptionDialog";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { useProperty } from "@/context/PropertyContext";
 import { useNotifications } from "@/context/NotificationContext";
@@ -58,6 +59,17 @@ interface BookingNotif {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Quanto falta para a chegada. É o prazo real do pedido de exceção: depois que o
+ *  hóspede chega, não há mais decisão a tomar — só constrangimento no balcão. */
+function chegadaEm(iso: string) {
+  const dias = Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+  if (isNaN(dias)) return '';
+  if (dias < 0) return 'já chegou';
+  if (dias === 0) return 'chega hoje';
+  if (dias === 1) return 'chega amanhã';
+  return `chega em ${dias} dias`;
+}
 
 function timeAgo(ts: string) {
   try {
@@ -124,6 +136,10 @@ export function NotificationCenter() {
   const overlayRoot = useOverlayRoot();
   const [whatsapp, setWhatsapp] = useState<WhatsAppNotif[]>([]);
   const [concierge, setConcierge] = useState<ConciergeNotif[]>([]);
+  // Fila de exceções à Política Pet. Vermelha e clicável: decidir exigia entrar
+  // na estadia, e a pílula lá dentro nunca chamou ninguém.
+  const [petExceptions, setPetExceptions] = useState<PetExceptionItem[]>([]);
+  const [petExcOpen, setPetExcOpen] = useState<PetExceptionItem | null>(null);
   const [bookings, setBookings] = useState<BookingNotif[]>([]);
   const [clearingWa, setClearingWa] = useState(false);
 
@@ -341,6 +357,16 @@ export function NotificationCenter() {
     setWhatsapp(enriched);
   }, [propertyId, supabase, canAlert, flushWhatsapp]);
 
+  const fetchPetExceptions = useCallback(async () => {
+    if (!propertyId) return;
+    try {
+      const res = await fetch(`/api/admin/pet-exceptions?propertyId=${propertyId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setPetExceptions(Array.isArray(data.items) ? data.items : []);
+    } catch { /* fila vazia não pode derrubar o sino */ }
+  }, [propertyId]);
+
   const fetchConcierge = useCallback(async () => {
     if (!propertyId) return;
     const { data } = await supabase
@@ -449,10 +475,10 @@ export function NotificationCenter() {
 
   useEffect(() => {
     if (!propertyId || !canSeeBell) return;
-    Promise.all([fetchWhatsapp(), fetchConcierge(), fetchBookings()]).then(() => {
+    Promise.all([fetchWhatsapp(), fetchConcierge(), fetchBookings(), fetchPetExceptions()]).then(() => {
       initialized.current = true;
     });
-  }, [propertyId, canSeeBell, fetchWhatsapp, fetchConcierge, fetchBookings]);
+  }, [propertyId, canSeeBell, fetchWhatsapp, fetchConcierge, fetchBookings, fetchPetExceptions]);
 
   // ─── Request browser notification permission (only roles that get alerts) ───
 
@@ -675,7 +701,7 @@ export function NotificationCenter() {
   // número. O badge âmbar é só de pendência que exige ação: concierge e agenda.
 
   const waCount = Math.max(counts.messages, whatsapp.length);
-  const actionable = concierge.length + bookings.length;
+  const actionable = concierge.length + bookings.length + petExceptions.length;
   const total = (waCount > 0 ? 1 : 0) + actionable;
 
   // ─── Tab blinking ───────────────────────────────────────────────────────────
@@ -757,6 +783,28 @@ export function NotificationCenter() {
               </div>
             ) : (
               <>
+                {/* Pet fora da política — vermelho e no topo: é a única fila do sino
+                    com prazo de verdade (depois da chegada não há o que decidir). */}
+                {petExceptions.length > 0 && (
+                  <NotifSection
+                    icon={<Dog size={14} className="text-red-500" />}
+                    label="Pet fora da política"
+                    count={petExceptions.length}
+                    accent="red"
+                  >
+                    {petExceptions.map(p => (
+                      <NotifRow
+                        key={p.stayId}
+                        title={`${p.guestName}${p.cabinName ? ` · ${p.cabinName}` : ''}`}
+                        subtitle={`${p.reasons[0] || 'Fora da Política Pet'} — toque para decidir`}
+                        time={chegadaEm(p.checkIn)}
+                        accent="red"
+                        onClick={() => { setOpen(false); setPetExcOpen(p); }}
+                      />
+                    ))}
+                  </NotifSection>
+                )}
+
                 {/* Concierge section — primeiro e com destaque: é o que o balcão não pode perder */}
                 {concierge.length > 0 && (
                   <NotifSection
@@ -906,6 +954,13 @@ export function NotificationCenter() {
         />,
         overlayRoot ?? document.body
       )}
+
+      <PetExceptionDialog
+        item={petExcOpen}
+        open={!!petExcOpen}
+        onClose={() => setPetExcOpen(null)}
+        onDecided={fetchPetExceptions}
+      />
     </div>
   );
 }
@@ -918,31 +973,33 @@ function NotifSection({
   icon: React.ReactNode;
   label: string;
   count: number;
-  onViewAll: () => void;
+  onViewAll?: () => void;
   children: React.ReactNode;
-  accent?: 'orange';
+  accent?: 'orange' | 'red';
 }) {
   return (
     <div className={cn(
       "border-b border-border last:border-b-0",
-      accent === 'orange' && "bg-orange-500/[0.06]"
+      accent === 'orange' && "bg-orange-500/[0.06]",
+      accent === 'red' && "bg-red-500/[0.07]"
     )}>
       <button
         onClick={onViewAll}
-        className="w-full flex items-center justify-between px-4 py-2 hover:bg-muted/40 transition-colors group"
+        disabled={!onViewAll}
+        className="w-full flex items-center justify-between px-4 py-2 hover:bg-muted/40 transition-colors group disabled:hover:bg-transparent"
       >
         <div className="flex items-center gap-2">
           {icon}
           <span className={cn(
             "text-[11px] font-black uppercase tracking-widest",
-            accent === 'orange' ? "text-orange-500" : "text-muted-foreground"
+            accent === 'orange' ? "text-orange-500" : accent === 'red' ? "text-red-500" : "text-muted-foreground"
           )}>{label}</span>
           <span className={cn(
             "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
-            accent === 'orange' ? "bg-orange-500/15 text-orange-500" : "bg-muted"
+            accent === 'orange' ? "bg-orange-500/15 text-orange-500" : accent === 'red' ? "bg-red-500/15 text-red-500" : "bg-muted"
           )}>{count}</span>
         </div>
-        <ChevronRight size={12} className="text-muted-foreground group-hover:text-foreground transition-colors" />
+        {onViewAll && <ChevronRight size={12} className="text-muted-foreground group-hover:text-foreground transition-colors" />}
       </button>
       <div className="pb-1">{children}</div>
     </div>
@@ -954,7 +1011,7 @@ function NotifRow({ title, subtitle, time, onClick, accent }: {
   subtitle: string;
   time: string;
   onClick: () => void;
-  accent?: 'orange';
+  accent?: 'orange' | 'red';
 }) {
   return (
     <button
@@ -962,7 +1019,7 @@ function NotifRow({ title, subtitle, time, onClick, accent }: {
       className="w-full flex items-start gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
     >
       <div className="flex-1 min-w-0">
-        <p className={cn("text-xs font-bold truncate", accent === 'orange' && "text-orange-400")}>{title}</p>
+        <p className={cn("text-xs font-bold truncate", accent === 'orange' && "text-orange-400", accent === 'red' && "text-red-400")}>{title}</p>
         <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>
       </div>
       <span className="text-[10px] text-muted-foreground whitespace-nowrap mt-0.5 shrink-0">{time}</span>

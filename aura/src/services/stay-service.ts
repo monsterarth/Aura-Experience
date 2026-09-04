@@ -1010,27 +1010,65 @@ export const StayService = {
   async listPendingPetExceptions(propertyId: string, blackout?: PetBlackoutWindow[] | null): Promise<Array<{
     stayId: string; guestId: string | null; cabinId: string | null;
     checkIn: string; checkOut: string; pets: any[]; reasons: string[];
-    requestedAt: string | null; inBlackout: boolean; overlapping: { stayId: string; checkIn: string; checkOut: string }[];
+    requestedAt: string | null;
+    inBlackout: boolean;
+    overlapping: { stayId: string; checkIn: string; checkOut: string }[];
+    /** Pico de ocupação no período pedido, em % das cabanas que contam. */
+    occupancyPct: number | null;
+    /** Quantas OUTRAS estadias com pet cruzam estas datas. */
+    petsInPeriod: number;
   }>> {
     const todayIso = new Date().toISOString();
 
-    const [pendingRes, approvedRes] = await Promise.all([
+    // Duas consultas para tudo: uma varredura das estadias vivas (que serve ao
+    // pedido, à sobreposição, à ocupação e à contagem de pets) e a das cabanas.
+    // Uma consulta por pedido seria o caminho fácil e o mais caro.
+    const [staysRes, cabinsRes] = await Promise.all([
       db().from('stays')
-        .select('id, guestId, cabinId, checkIn, checkOut, pets, petException')
+        .select('id, guestId, cabinId, checkIn, checkOut, pets, hasPet, status, petException')
         .eq('propertyId', propertyId)
-        .not('petException', 'is', null)
         .gte('checkOut', todayIso)
         .order('checkIn', { ascending: true }),
-      db().from('stays')
-        .select('id, checkIn, checkOut, petException')
-        .eq('propertyId', propertyId)
-        .not('petException', 'is', null)
-        .gte('checkOut', todayIso),
+      db().from('cabins')
+        .select('id, active, ignoreInOccupancy')
+        .eq('propertyId', propertyId),
     ]);
 
-    const pending = (pendingRes.data ?? []).filter((s: any) => s.petException?.status === 'pending');
-    const approved = (approvedRes.data ?? []).filter((s: any) => s.petException?.status === 'approved');
+    const stays = staysRes.data ?? [];
+    // Cabana desativada ou fora da conta de ocupação não entra no denominador.
+    const cabinsCount = (cabinsRes.data ?? [])
+      .filter((c: any) => c.active !== false && !c.ignoreInOccupancy).length;
+
+    const vivas = stays.filter((s: any) => !['cancelled', 'archived'].includes(s.status));
+    const pending = stays.filter((s: any) => s.petException?.status === 'pending');
+    const approved = stays.filter((s: any) => s.petException?.status === 'approved');
     const windows = blackout ?? DEFAULT_PET_BLACKOUT;
+
+    const cruza = (a: any, b: any) => a.checkIn < b.checkOut && a.checkOut > b.checkIn;
+
+    /**
+     * Pico de ocupação dentro do período pedido: a maior quantidade de cabanas
+     * ocupadas ao mesmo tempo, e não a média. É o dia cheio que decide se cabe
+     * mais um animal na pousada — a média esconde exatamente esse dia.
+     */
+    const picoOcupacao = (alvo: any): number | null => {
+      if (cabinsCount === 0) return null;
+      const inicio = new Date(alvo.checkIn);
+      const fim = new Date(alvo.checkOut);
+      if (isNaN(inicio.getTime()) || isNaN(fim.getTime())) return null;
+
+      let pico = 0;
+      for (let i = 0, dia = new Date(inicio); i < 400 && dia < fim; i++, dia.setDate(dia.getDate() + 1)) {
+        const ms = dia.getTime();
+        const ocupadas = new Set(
+          vivas
+            .filter((s: any) => s.cabinId && new Date(s.checkIn).getTime() <= ms && new Date(s.checkOut).getTime() > ms)
+            .map((s: any) => s.cabinId),
+        ).size;
+        if (ocupadas > pico) pico = ocupadas;
+      }
+      return Math.min(100, Math.round((pico / cabinsCount) * 100));
+    };
 
     return pending.map((s: any) => ({
       stayId: s.id,
@@ -1045,8 +1083,12 @@ export const StayService = {
       // Sobreposição de datas: duas exceções na pousada ao mesmo tempo é o risco
       // real, não "no mesmo feriado".
       overlapping: approved
-        .filter((a: any) => a.id !== s.id && a.checkIn < s.checkOut && a.checkOut > s.checkIn)
+        .filter((a: any) => a.id !== s.id && cruza(a, s))
         .map((a: any) => ({ stayId: a.id, checkIn: a.checkIn, checkOut: a.checkOut })),
+      occupancyPct: picoOcupacao(s),
+      // Pets DENTRO da política também disputam espaço e sossego — a dica é
+      // "quantos animais vão estar aqui", não "quantas exceções".
+      petsInPeriod: vivas.filter((o: any) => o.id !== s.id && o.hasPet && cruza(o, s)).length,
     }));
   },
 
@@ -1087,5 +1129,18 @@ export const StayService = {
       details: `Exceção à Política Pet ${decision === 'approved' ? 'APROVADA' : 'RECUSADA'}.${quem}${next.note ? ` Observação: ${next.note}` : ''}`,
       newData: next,
     });
+
+    // Avisa o hóspede por WhatsApp. Só dispara se a propriedade tiver a regra
+    // ligada com um texto escolhido — automação sem template não inventa
+    // mensagem, e recusa de pet é assunto delicado demais para texto padrão.
+    // A falha do envio não derruba a decisão: o registro é o que importa.
+    try {
+      await AutomationService.triggerAutomationAdmin(
+        propertyId, stayId,
+        decision === 'approved' ? 'pet_exception_approved' : 'pet_exception_refused',
+      );
+    } catch (e) {
+      console.error('[decidePetException] automação', e);
+    }
   },
 };
