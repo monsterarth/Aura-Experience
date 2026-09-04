@@ -18,10 +18,11 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
     }
 
-    // 1. Fetch stay
+    // 1. Fetch stay — só os campos que a pesquisa usa (nunca accessCode nem PII
+    //    além do guestId que o próprio POST reenvia). Rota anônima: sem select("*").
     const { data: stay, error: stayError } = await supabaseAdmin
         .from("stays")
-        .select("*")
+        .select("id, guestId, propertyId")
         .eq("id", stayId)
         .maybeSingle();
 
@@ -61,14 +62,20 @@ export async function GET(request: NextRequest) {
         .eq("isDefault", true)
         .maybeSingle();
 
-    // 4. Property (tema "camaleão" + nome) para o fluxo curado
+    // 4. Property (tema "camaleão" + nome) para o fluxo curado — colunas explícitas,
+    //    sem despejar settings inteiro numa rota anônima.
     const { data: property } = await supabaseAdmin
         .from("properties")
-        .select("*")
+        .select("id, name, slug, logoUrl, theme")
         .eq("id", propertyId)
         .maybeSingle();
 
-    return NextResponse.json({ stay, alreadyAnswered, template: template ?? null, property: property ?? null, preferredLanguage });
+    // Não devolve guestId (= CPF): a rota é anônima e o cliente não precisa dele —
+    // o POST deriva o guestId do próprio stayId no servidor.
+    return NextResponse.json({
+        stay: { id: stay.id, propertyId: stay.propertyId },
+        alreadyAnswered, template: template ?? null, property: property ?? null, preferredLanguage,
+    });
 }
 
 export async function POST(request: NextRequest) {
@@ -77,11 +84,26 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { stayId, guestId, templateId, answers: answersRecord, propertyId } = body;
+    const { stayId, templateId, answers: answersRecord, propertyId } = body;
 
-    if (!stayId || !guestId || !templateId || !answersRecord || !propertyId) {
+    if (!stayId || !templateId || !answersRecord || !propertyId) {
         return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+
+    // guestId é derivado do stayId no servidor — nunca aceito do cliente (o CPF
+    // não trafega, e a gravação não fica à mercê do que o navegador manda). Serve
+    // também de checagem de posse: a estadia tem de existir nesta propriedade.
+    const { data: ownStay } = await supabaseAdmin
+        .from("stays")
+        .select("guestId")
+        .eq("id", stayId)
+        .eq("propertyId", propertyId)
+        .maybeSingle();
+
+    if (!ownStay) {
+        return NextResponse.json({ error: "Estadia não encontrada." }, { status: 404 });
+    }
+    const guestId = ownStay.guestId;
 
     // Guard: check not already answered
     const { count } = await supabaseAdmin

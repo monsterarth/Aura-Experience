@@ -15,10 +15,6 @@ import { formatEventDate, eventTitle, eventDesc, eventPrice } from "./eventHelpe
    Portal do Hóspede — bottom sheets / modais (Fase 1)
    ============================================================ */
 
-// TODO(fase futura): a senha do portão é fixa (igual ao hub antigo).
-// Quando houver campo no schema (property/cabin), ler de lá.
-const GATE_CODE = "1008#";
-
 function waLink(number: string | undefined, text?: string): string | null {
     const digits = (number || "").replace(/\D/g, "");
     if (!digits) return null;
@@ -93,19 +89,29 @@ function WifiQR({ ssid, password, size = 158 }: { ssid: string; password?: strin
 
 /* ---------- ACCESS ---------- */
 function AccessSheet() {
-    const { closeSheet, t } = usePortal();
+    const { closeSheet, t, property } = usePortal();
+    // A senha do portão é por propriedade (settings.gateCode). Antes era um literal
+    // fixo "1008#" no código — toda propriedade nova mostrava a senha da Fazenda.
+    const gateCode = (property?.settings as { gateCode?: string } | undefined)?.gateCode?.trim();
     return (
         <Sheet onClose={closeSheet} title={t.accessTitle} icon="key">
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <Card pad={0} style={{ overflow: "hidden", textAlign: "center" }}>
-                    <div style={{ background: "linear-gradient(145deg,var(--brand),var(--brand-deep))", padding: "22px 18px", color: "#fff" }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, opacity: .8, textTransform: "uppercase", letterSpacing: ".08em" }}>{t.gatePassword}</div>
-                        <div style={{ fontSize: 46, fontWeight: 800, letterSpacing: ".06em", marginTop: 4, fontFamily: "ui-monospace, monospace" }}>{GATE_CODE}</div>
+                {gateCode ? (
+                    <Card pad={0} style={{ overflow: "hidden", textAlign: "center" }}>
+                        <div style={{ background: "linear-gradient(145deg,var(--brand),var(--brand-deep))", padding: "22px 18px", color: "#fff" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, opacity: .8, textTransform: "uppercase", letterSpacing: ".08em" }}>{t.gatePassword}</div>
+                            <div style={{ fontSize: 46, fontWeight: 800, letterSpacing: ".06em", marginTop: 4, fontFamily: "ui-monospace, monospace" }}>{gateCode}</div>
+                        </div>
+                        <div style={{ padding: 13 }}>
+                            <CopyField label={t.typeOnKeypad} value={gateCode} mono />
+                        </div>
+                    </Card>
+                ) : (
+                    <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 16, padding: 22, textAlign: "center" }}>
+                        <Icon n="key" s={32} c="var(--faint)" style={{ margin: "0 auto 10px" }} />
+                        <p style={{ margin: 0, fontSize: 13.5, color: "var(--muted)", fontWeight: 600 }}>{t.gateNotSet}</p>
                     </div>
-                    <div style={{ padding: 13 }}>
-                        <CopyField label={t.typeOnKeypad} value={GATE_CODE} mono />
-                    </div>
-                </Card>
+                )}
                 <Card pad={13} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{ width: 40, height: 40, borderRadius: 11, background: "var(--brand-soft)", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon n="home" s={20} c="var(--brand)" /></div>
                     <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>{t.cabinAccess}</div><div style={{ fontSize: 12, color: "var(--muted)" }}>{t.cabinAccessSub}</div></div>

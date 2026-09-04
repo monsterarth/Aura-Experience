@@ -49,7 +49,7 @@ export interface PortalStrings {
     eventsFull: string; eventsFullSub: string;
     mapFull: string; mapFullSub: string;
     // sheets — access
-    accessTitle: string; gatePassword: string; typeOnKeypad: string;
+    accessTitle: string; gatePassword: string; typeOnKeypad: string; gateNotSet: string;
     cabinAccess: string; cabinAccessSub: string;
     // sheets — wifi
     wifiTitle: string; scanToConnect: string; networkSSID: string; wifiPassword: string; wifiNotSet: string;
@@ -107,7 +107,7 @@ export const portalI18n: Record<Lang, PortalStrings> = {
         conciergeFull: "Concierge", conciergeFullSub: "Peça itens e serviços",
         eventsFull: "Eventos", eventsFullSub: "Na propriedade e na região",
         mapFull: "Mapa do resort", mapFullSub: "Áreas, GPS e reservas",
-        accessTitle: "Chave & acessos", gatePassword: "Senha do portão principal", typeOnKeypad: "Digite no teclado do portão",
+        accessTitle: "Chave & acessos", gatePassword: "Senha do portão principal", typeOnKeypad: "Digite no teclado do portão", gateNotSet: "A senha do portão ainda não foi configurada.",
         cabinAccess: "Sua acomodação", cabinAccessSub: "Fechadura digital · mesma senha",
         wifiTitle: "Wi-Fi do chalé", scanToConnect: "Aponte a câmera para conectar", networkSSID: "Rede (SSID)", wifiPassword: "Senha", wifiNotSet: "O Wi-Fi da acomodação ainda não foi configurado.",
         contactTitle: "Falar com a recepção", teamOnline: "Equipe online · resposta em minutos", quickQuestions: "Perguntas rápidas",
@@ -158,7 +158,7 @@ export const portalI18n: Record<Lang, PortalStrings> = {
         conciergeFull: "Concierge", conciergeFullSub: "Request items and services",
         eventsFull: "Events", eventsFullSub: "On property and nearby",
         mapFull: "Resort map", mapFullSub: "Areas, GPS and bookings",
-        accessTitle: "Keys & access", gatePassword: "Main gate password", typeOnKeypad: "Type on the gate keypad",
+        accessTitle: "Keys & access", gatePassword: "Main gate password", typeOnKeypad: "Type on the gate keypad", gateNotSet: "The gate password hasn't been set up yet.",
         cabinAccess: "Your accommodation", cabinAccessSub: "Digital lock · same code",
         wifiTitle: "Cabin Wi-Fi", scanToConnect: "Point your camera to connect", networkSSID: "Network (SSID)", wifiPassword: "Password", wifiNotSet: "The accommodation Wi-Fi hasn't been set up yet.",
         contactTitle: "Talk to reception", teamOnline: "Team online · reply in minutes", quickQuestions: "Quick questions",
@@ -209,7 +209,7 @@ export const portalI18n: Record<Lang, PortalStrings> = {
         conciergeFull: "Concierge", conciergeFullSub: "Pide ítems y servicios",
         eventsFull: "Eventos", eventsFullSub: "En la propiedad y la región",
         mapFull: "Mapa del resort", mapFullSub: "Áreas, GPS y reservas",
-        accessTitle: "Llave y accesos", gatePassword: "Clave del portón principal", typeOnKeypad: "Marca en el teclado del portón",
+        accessTitle: "Llave y accesos", gatePassword: "Clave del portón principal", typeOnKeypad: "Marca en el teclado del portón", gateNotSet: "La clave del portón aún no ha sido configurada.",
         cabinAccess: "Tu alojamiento", cabinAccessSub: "Cerradura digital · misma clave",
         wifiTitle: "Wi-Fi de la cabaña", scanToConnect: "Apunta la cámara para conectar", networkSSID: "Red (SSID)", wifiPassword: "Contraseña", wifiNotSet: "El Wi-Fi del alojamiento aún no fue configurado.",
         contactTitle: "Hablar con recepción", teamOnline: "Equipo en línea · respuesta en minutos", quickQuestions: "Preguntas rápidas",

@@ -200,7 +200,7 @@ export function CuratedSurvey({ stay, property, template, lang }: {
         try {
             const res = await fetch("/api/guest/survey", {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ stayId: stay.id, guestId: stay.guestId, templateId: template.id, answers, propertyId: stay.propertyId }),
+                body: JSON.stringify({ stayId: stay.id, templateId: template.id, answers, propertyId: stay.propertyId }),
             });
             // sucesso ou "já respondida" levam à tela final mesmo assim
             await res.json().catch(() => ({}));

@@ -145,7 +145,6 @@ export default function GuestFeedbackPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         stayId: stayContext.stay.id,
-        guestId: stayContext.stay.guestId,
         templateId: template.id,
         answers,
         propertyId: stayContext.propertyId,

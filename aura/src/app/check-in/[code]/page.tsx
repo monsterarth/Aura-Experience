@@ -114,6 +114,20 @@ const hubTranslations = {
         describeIssue: 'Descreva o problema...',
         selectArea: 'Selecione a área afetada',
         back: 'Voltar',
+        groupTitle: 'Reserva de Grupo',
+        groupDesc: 'Existem acomodações vinculadas a este código aguardando a finalização da sua ficha.',
+        unit: 'Unidade',
+        accommodation: 'Acomodação',
+        pending: 'Pendente',
+        surveyTitle: 'O que achou da sua estadia?',
+        surveyDesc: 'Sua avaliação é muito importante para nós. Levará apenas alguns minutinhos.',
+        stayEnded: 'Hospedagem Encerrada',
+        policyEmpty: 'Política não informada',
+        mustAcceptGeneral: 'Por favor, aceite a Política Geral',
+        mustAcceptPrivacy: 'Por favor, aceite a Política de Privacidade',
+        mustAcceptPet: 'Por favor, aceite a Política Pet',
+        termsAcceptedToast: 'Termos aceitos com sucesso!',
+        termsAcceptError: 'Houve um erro ao registrar seu aceite.',
     },
     en: {
         welcome: 'Welcome to your',
@@ -172,6 +186,20 @@ const hubTranslations = {
         describeIssue: 'Describe the problem...',
         selectArea: 'Select the affected area',
         back: 'Back',
+        groupTitle: 'Group Booking',
+        groupDesc: 'There are accommodations linked to this code awaiting completion of your check-in form.',
+        unit: 'Unit',
+        accommodation: 'Accommodation',
+        pending: 'Pending',
+        surveyTitle: 'How was your stay?',
+        surveyDesc: 'Your feedback matters a lot to us. It only takes a few minutes.',
+        stayEnded: 'Stay Ended',
+        policyEmpty: 'Policy not provided',
+        mustAcceptGeneral: 'Please accept the General Policy',
+        mustAcceptPrivacy: 'Please accept the Privacy Policy',
+        mustAcceptPet: 'Please accept the Pet Policy',
+        termsAcceptedToast: 'Terms accepted successfully!',
+        termsAcceptError: 'There was an error registering your acceptance.',
     },
     es: {
         welcome: 'Bienvenido(a) a su',
@@ -230,6 +258,20 @@ const hubTranslations = {
         describeIssue: 'Describa el problema...',
         selectArea: 'Seleccione el área afectada',
         back: 'Volver',
+        groupTitle: 'Reserva de Grupo',
+        groupDesc: 'Hay alojamientos vinculados a este código esperando que completes tu ficha.',
+        unit: 'Unidad',
+        accommodation: 'Alojamiento',
+        pending: 'Pendiente',
+        surveyTitle: '¿Qué te pareció tu estadía?',
+        surveyDesc: 'Tu opinión es muy importante para nosotros. Solo tomará unos minutos.',
+        stayEnded: 'Estadía Finalizada',
+        policyEmpty: 'Política no informada',
+        mustAcceptGeneral: 'Por favor, acepta la Política General',
+        mustAcceptPrivacy: 'Por favor, acepta la Política de Privacidad',
+        mustAcceptPet: 'Por favor, acepta la Política de Mascotas',
+        termsAcceptedToast: '¡Términos aceptados con éxito!',
+        termsAcceptError: 'Hubo un error al registrar tu aceptación.',
     },
 };
 
@@ -340,9 +382,9 @@ function GuestHubContent() {
         if (!stay) return;
 
         // Validate
-        if (!agreedGeneral) { toast.error("Por favor, aceite a Política Geral"); return; }
-        if (!agreedPrivacy) { toast.error("Por favor, aceite a Política de Privacidade"); return; }
-        if (stay.hasPet && !agreedPet) { toast.error("Por favor, aceite a Política Pet"); return; }
+        if (!agreedGeneral) { toast.error(t.mustAcceptGeneral); return; }
+        if (!agreedPrivacy) { toast.error(t.mustAcceptPrivacy); return; }
+        if (stay.hasPet && !agreedPet) { toast.error(t.mustAcceptPet); return; }
 
         setIsSavingTerms(true);
         try {
@@ -361,9 +403,9 @@ function GuestHubContent() {
 
             // Update local state to trigger the dashboard view
             setStay({ ...stay, automationFlags: newFlags });
-            toast.success("Termos aceitos com sucesso!");
+            toast.success(t.termsAcceptedToast);
         } catch (e) {
-            toast.error("Houve um erro ao registrar seu aceite.");
+            toast.error(t.termsAcceptError);
         } finally {
             setIsSavingTerms(false);
         }
@@ -399,8 +441,8 @@ function GuestHubContent() {
         return (
             <div className="min-h-screen p-6 bg-background text-foreground flex flex-col items-center justify-center font-sans space-y-8" style={themeStyles}>
                 <div className="text-center space-y-2 mt-8 animate-in fade-in duration-700">
-                    <h1 className="text-3xl font-black uppercase tracking-tighter">Reserva de Grupo</h1>
-                    <p className="text-muted-foreground italic">Existem acomodações vinculadas a este código aguardando a finalização da sua ficha.</p>
+                    <h1 className="text-3xl font-black uppercase tracking-tighter">{t.groupTitle}</h1>
+                    <p className="text-muted-foreground italic">{t.groupDesc}</p>
                 </div>
 
                 <div className="grid gap-4 w-full max-w-md animate-in slide-in-from-bottom-6 duration-700">
@@ -412,10 +454,10 @@ function GuestHubContent() {
                                 className="p-6 bg-secondary/80 hover:bg-secondary rounded-[32px] border border-border border-l-4 border-l-primary/50 text-left transition-all flex justify-between items-center group shadow-sm hover:shadow-md"
                             >
                                 <div>
-                                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Unidade</p>
-                                    <p className="text-xl font-black text-foreground">{s.cabinName || "Acomodação"}</p>
+                                    <p className="text-[10px] font-bold text-muted-foreground uppercase">{t.unit}</p>
+                                    <p className="text-xl font-black text-foreground">{s.cabinName || t.accommodation}</p>
                                     <span className="text-[9px] font-bold uppercase mt-2 inline-block px-2 py-1 rounded bg-orange-500/10 text-orange-600">
-                                        Pendente
+                                        {t.pending}
                                     </span>
                                 </div>
                                 <ArrowRight size={20} className="transition-transform group-hover:translate-x-1 text-primary" />
@@ -437,9 +479,9 @@ function GuestHubContent() {
                             <Star size={40} className="fill-primary" />
                         </div>
                         <div>
-                            <h1 className="text-3xl font-black uppercase tracking-tighter">O que achou da sua estadia?</h1>
+                            <h1 className="text-3xl font-black uppercase tracking-tighter">{t.surveyTitle}</h1>
                             <p className="text-muted-foreground mt-2">
-                                Sua avaliação é muito importante para nós. Levará apenas alguns minutinhos.
+                                {t.surveyDesc}
                             </p>
                         </div>
 
@@ -447,7 +489,7 @@ function GuestHubContent() {
                             onClick={() => router.push(`/feedback/${stay.id}`)} // Assumindo que essa rota de feedback existe ou será criada em outro momento. Ou apenas avisar que não existe.
                             className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-lg"
                         >
-                            Avaliar Estadia <ArrowRight size={20} />
+                            {t.survey} <ArrowRight size={20} />
                         </button>
                     </div>
                 </div>
@@ -461,9 +503,9 @@ function GuestHubContent() {
                             <CheckCircle size={40} />
                         </div>
                         <div>
-                            <h1 className="text-3xl font-black uppercase tracking-tighter">Hospedagem Encerrada</h1>
+                            <h1 className="text-3xl font-black uppercase tracking-tighter">{t.stayEnded}</h1>
                             <p className="text-muted-foreground mt-2">
-                                Agradecemos por nos escolher. Volte sempre e tenha uma ótima viagem!
+                                {t.checkoutDesc}
                             </p>
                         </div>
 
@@ -471,7 +513,7 @@ function GuestHubContent() {
                             onClick={() => window.open(`https://wa.me/${property?.settings?.whatsappNumber?.replace(/\D/g, '') || ''}`, '_blank')}
                             className="w-full py-4 bg-green-600 text-white font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-600/20"
                         >
-                            <Phone size={20} /> Precisou de algo?
+                            <Phone size={20} /> {t.needHelp}
                         </button>
                     </div>
                 </div>
@@ -489,41 +531,41 @@ function GuestHubContent() {
 
                         <div className="text-center space-y-2 mt-8">
                             <FileText size={48} className="mx-auto text-primary" />
-                            <h1 className="text-3xl font-black uppercase text-foreground tracking-tighter">Revisão de Termos</h1>
-                            <p className="text-muted-foreground">Por favor, leia e aceite nossas políticas para ter acesso ao portal de sua hospedagem.</p>
+                            <h1 className="text-3xl font-black uppercase text-foreground tracking-tighter">{t.termsTitle}</h1>
+                            <p className="text-muted-foreground">{t.termsDesc}</p>
                         </div>
 
                         <div className="bg-card border border-border rounded-3xl p-6 shadow-sm overflow-hidden flex flex-col">
-                            <h2 className="text-xl font-bold mb-4 uppercase text-primary">Política Geral</h2>
+                            <h2 className="text-xl font-bold mb-4 uppercase text-primary">{t.policyGeneral}</h2>
                             <div className="bg-secondary/30 p-4 rounded-xl text-sm/relaxed text-muted-foreground mb-4 max-h-48 overflow-y-auto whitespace-pre-line">
-                                {property?.settings?.generalPolicyText?.pt || "Política não informada"}
+                                {property?.settings?.generalPolicyText?.[lang] || property?.settings?.generalPolicyText?.pt || t.policyEmpty}
                             </div>
                             <label className="flex items-center gap-3 cursor-pointer p-4 bg-secondary rounded-xl hover:bg-accent transition-colors">
                                 <input type="checkbox" checked={agreedGeneral} onChange={(e) => setAgreedGeneral(e.target.checked)} className="w-6 h-6 rounded text-primary focus:ring-primary/20 accent-primary" />
-                                <span className="font-semibold text-foreground">Li e concordo com a Política Geral</span>
+                                <span className="font-semibold text-foreground">{t.agreedGeneral}</span>
                             </label>
                         </div>
 
                         <div className="bg-card border border-border rounded-3xl p-6 shadow-sm overflow-hidden flex flex-col">
-                            <h2 className="text-xl font-bold mb-4 uppercase text-primary">Política de Privacidade</h2>
+                            <h2 className="text-xl font-bold mb-4 uppercase text-primary">{t.policyPrivacy}</h2>
                             <div className="bg-secondary/30 p-4 rounded-xl text-sm/relaxed text-muted-foreground mb-4 max-h-48 overflow-y-auto whitespace-pre-line">
-                                {property?.settings?.privacyPolicyText?.pt || "Política de privacidade não informada"}
+                                {property?.settings?.privacyPolicyText?.[lang] || property?.settings?.privacyPolicyText?.pt || t.policyEmpty}
                             </div>
                             <label className="flex items-center gap-3 cursor-pointer p-4 bg-secondary rounded-xl hover:bg-accent transition-colors">
                                 <input type="checkbox" checked={agreedPrivacy} onChange={(e) => setAgreedPrivacy(e.target.checked)} className="w-6 h-6 rounded text-primary focus:ring-primary/20 accent-primary" />
-                                <span className="font-semibold text-foreground">Li e concordo com a Privacidade (LGPD)</span>
+                                <span className="font-semibold text-foreground">{t.agreedPrivacy}</span>
                             </label>
                         </div>
 
                         {stay.hasPet && (
                             <div className="bg-orange-500/5 border border-orange-500/20 rounded-3xl p-6 shadow-sm overflow-hidden flex flex-col">
-                                <h2 className="text-xl font-bold mb-4 uppercase text-orange-600">Política Pet</h2>
+                                <h2 className="text-xl font-bold mb-4 uppercase text-orange-600">{t.policyPet}</h2>
                                 <div className="bg-white/50 dark:bg-black/20 p-4 rounded-xl text-sm/relaxed text-orange-900/80 dark:text-orange-200/80 mb-4 max-h-48 overflow-y-auto whitespace-pre-line">
-                                    {property?.settings?.petPolicyText?.pt || "Política Pet não informada"}
+                                    {property?.settings?.petPolicyText?.[lang] || property?.settings?.petPolicyText?.pt || t.policyEmpty}
                                 </div>
                                 <label className="flex items-center gap-3 cursor-pointer p-4 bg-white/50 dark:bg-black/50 rounded-xl hover:bg-orange-500/10 transition-colors">
                                     <input type="checkbox" checked={agreedPet} onChange={(e) => setAgreedPet(e.target.checked)} className="w-6 h-6 rounded text-orange-600 focus:ring-orange-600/20 accent-orange-600" />
-                                    <span className="font-semibold text-orange-800 dark:text-orange-200">Li e concordo com a Política Pet</span>
+                                    <span className="font-semibold text-orange-800 dark:text-orange-200">{t.agreedPet}</span>
                                 </label>
                             </div>
                         )}
@@ -534,7 +576,7 @@ function GuestHubContent() {
                                 disabled={isSavingTerms || (!agreedGeneral || !agreedPrivacy || (stay.hasPet && !agreedPet))}
                                 className="max-w-md w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
                             >
-                                {isSavingTerms ? <Loader2 className="animate-spin w-6 h-6" /> : "Prosseguir"}
+                                {isSavingTerms ? <Loader2 className="animate-spin w-6 h-6" /> : t.proceed}
                             </button>
                         </div>
                     </div>

@@ -43,6 +43,7 @@ export const SETTINGS_KEY_ROLES: Record<string, UserRole[]> = {
   petPolicyText: ["super_admin", "admin"],
 
   // Operação do dia a dia.
+  gateCode: ["super_admin", "admin", "manager"],
   checkInTime: ["super_admin", "admin", "manager"],
   checkOutTime: ["super_admin", "admin", "manager"],
   receptionStartTime: ["super_admin", "admin", "manager"],
