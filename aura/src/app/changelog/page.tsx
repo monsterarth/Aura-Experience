@@ -4,6 +4,7 @@ import { ArrowLeft, Sparkles, Zap, Wrench, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { getPublishedChangelogs } from "@/services/changelog-service";
+import { ChangelogText } from "@/components/ui/ChangelogText";
 import type { ChangelogEntryType } from "@/types/aura";
 
 export const metadata: Metadata = {
@@ -139,7 +140,7 @@ export default async function ChangelogPage() {
                                 {cfg.label}
                               </div>
                               <p className="text-sm text-gray-300 font-light leading-relaxed">
-                                {entry.text}
+                                <ChangelogText text={entry.text} />
                               </p>
                             </div>
                           );

@@ -9,7 +9,8 @@ export interface PlatformStats {
   stays: number | null;
   guests: number | null;
   housekeepingTasks: number | null;
-  maintenanceTasks: number | null;
+  /** Agendamentos que o próprio hóspede fez pelo portal — prova de autonomia. */
+  portalBookings: number | null;
   messagesSent: number | null;
   surveyResponses: number | null;
 }
@@ -50,14 +51,14 @@ async function countMessagesSent(): Promise<number | null> {
 
 /** Todos os contadores em paralelo; cada um tolera falha isoladamente (null = oculta). */
 export async function getPlatformStats(): Promise<PlatformStats> {
-  const [stays, guests, housekeepingTasks, maintenanceTasks, messagesSent, surveyResponses] =
+  const [stays, guests, housekeepingTasks, portalBookings, messagesSent, surveyResponses] =
     await Promise.all([
       countRows('stays'),
       countRows('guests'),
       countRows('housekeeping_tasks'),
-      countRows('maintenance_tasks'),
+      countRows('structure_bookings'),
       countMessagesSent(),
       countRows('survey_responses'),
     ]);
-  return { stays, guests, housekeepingTasks, maintenanceTasks, messagesSent, surveyResponses };
+  return { stays, guests, housekeepingTasks, portalBookings, messagesSent, surveyResponses };
 }

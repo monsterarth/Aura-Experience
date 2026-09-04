@@ -61,6 +61,7 @@ import {
   SKIN_LUME,
 } from "./_mocks/GuestPortalMock";
 import { ExploreListMock, IllustratedMapMock } from "./_mocks/ExploreMocks";
+import { ChangelogText } from "@/components/ui/ChangelogText";
 
 export const metadata: Metadata = {
   title: "Aura — Plataforma Operacional para Pousadas e Hotéis Boutique",
@@ -107,8 +108,8 @@ const modules = [
     icon: Wrench,
     title: "Manutenção",
     description:
-      "Chamados por urgência, preventivas agendadas automaticamente e execução pelo app do técnico em campo.",
-    tags: ["Chamados", "Preventivas", "Checklists"],
+      "Qualquer pessoa abre um chamado com foto — inclusive o hóspede, pelo portal. A demanda cai num pool sem dono até alguém assumir e executar pelo app em campo.",
+    tags: ["Chamado com foto", "Pool de demandas", "App do técnico"],
   },
   {
     icon: QrCode,
@@ -126,10 +127,10 @@ const modules = [
   },
   {
     icon: Coffee,
-    title: "Café & Restaurante",
+    title: "Café da Manhã",
     description:
-      "Salão do café com mapa de mesas, KDS na cozinha, cardápio digital e pedidos pelo app do garçom.",
-    tags: ["Salão", "KDS", "Cardápio QR"],
+      "O hóspede monta a própria cesta pelo portal até a noite anterior e escolhe o horário de entrega na cabana — a cozinha recebe o pedido pronto, cabana por cabana.",
+    tags: ["Cesta no portal", "Cardápio próprio", "Entrega por horário"],
   },
   {
     icon: HeartHandshake,
@@ -140,10 +141,10 @@ const modules = [
   },
   {
     icon: ClipboardList,
-    title: "Equipe & Escalas",
+    title: "Equipe & Ponto",
     description:
-      "RH com perfil por cargo, escalas mensais de trabalho e visão de folgas — quem trabalha quando, sem planilha.",
-    tags: ["HR", "Escalas", "Cargos"],
+      "Cadastro por cargo com acesso e app definidos pela função, ponto batido no próprio celular e relatório de horas fechado por mês.",
+    tags: ["Cargos e acessos", "Ponto", "Horas do mês"],
   },
   {
     icon: MessageSquare,
@@ -258,7 +259,7 @@ export default async function AuraHomePage() {
     { label: "Estadias gerenciadas", value: stats.stays },
     { label: "Hóspedes atendidos", value: stats.guests },
     { label: "Faxinas coordenadas", value: stats.housekeepingTasks },
-    { label: "Chamados de manutenção", value: stats.maintenanceTasks },
+    { label: "Agendamentos pelo portal", value: stats.portalBookings },
     { label: "Mensagens de WhatsApp", value: stats.messagesSent },
     { label: "Avaliações de hóspedes", value: stats.surveyResponses },
   ].filter((s): s is { label: string; value: number } => typeof s.value === "number" && s.value > 0);
@@ -564,7 +565,7 @@ export default async function AuraHomePage() {
                       v{entry.version}
                     </span>
                     <span className="text-xs text-gray-400 whitespace-nowrap">
-                      {entry.text}
+                      <ChangelogText text={entry.text} />
                     </span>
                     <span className="text-gray-700 mx-1 select-none">·</span>
                   </div>
