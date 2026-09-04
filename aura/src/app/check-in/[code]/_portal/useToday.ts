@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 export interface TodayItem {
     id: string;
-    kind: "breakfast" | "booking" | "event" | "concierge" | "checkout" | "dnd";
+    kind: "breakfast" | "booking" | "event" | "concierge" | "checkout" | "dnd" | "house" | "survey";
     icon: string;
     tone: string;
     urgent?: boolean;

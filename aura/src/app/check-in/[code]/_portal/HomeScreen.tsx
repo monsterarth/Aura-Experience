@@ -16,21 +16,27 @@ const TL: Record<string, Record<string, string>> = {
         bookB: "Sua reserva de hoje", bookC: "Ver", evB: "Evento de hoje", evC: "Ver no Explorar",
         concT1: "pedido a caminho", concTn: "pedidos a caminho", concB: "Acompanhe no concierge.", concC: "Acompanhar",
         coT: "Check-out às", coTm: "Check-out amanhã às", coB: "Precisa de mais tempo? Posso pedir um late check-out.", coBm: "Seu último dia conosco — se precisar, já solicito um late check-out.", coC: "Pedir late check-out",
-        dndT: "Não Perturbe ativo", dndB: "Limpeza pausada até", dndC: "Gerenciar" },
+        dndT: "Não Perturbe ativo", dndB: "Limpeza pausada até", dndC: "Gerenciar",
+        houseTime: "A casa", houseT: "A casa hoje", houseC: "Ver no mapa",
+        svTime: "Sua estadia", svT: "Como foi sua estadia?", svB: "Leva só um minutinho e ajuda muito.", svC: "Avaliar" },
     en: { cafe: "Breakfast", checkout: "Check-out", concierge: "Concierge", dnd: "Do Not Disturb", today: "Today",
         bfNoneT: "Build your breakfast basket", bfNoneB: "Secure tomorrow's breakfast to your cabin.", bfNoneC: "Build basket",
         bfDoneT: "Breakfast basket confirmed", bfDoneB: "Delivered to your cabin at", bfDoneC: "Edit basket",
         bookB: "Your booking today", bookC: "View", evB: "Today's event", evC: "See in Explore",
         concT1: "request on the way", concTn: "requests on the way", concB: "Track it in concierge.", concC: "Track",
         coT: "Check-out at", coTm: "Check-out tomorrow at", coB: "Need more time? I can request a late check-out.", coBm: "Your last day with us — if you need, I can request a late check-out now.", coC: "Request late check-out",
-        dndT: "Do Not Disturb on", dndB: "Cleaning paused until", dndC: "Manage" },
+        dndT: "Do Not Disturb on", dndB: "Cleaning paused until", dndC: "Manage",
+        houseTime: "The house", houseT: "The house today", houseC: "See on map",
+        svTime: "Your stay", svT: "How was your stay?", svB: "Takes just a minute and helps a lot.", svC: "Rate" },
     es: { cafe: "Desayuno", checkout: "Check-out", concierge: "Concierge", dnd: "No Molestar", today: "Hoy",
         bfNoneT: "Arma tu cesta de desayuno", bfNoneB: "Asegura el desayuno de mañana en tu cabaña.", bfNoneC: "Armar cesta",
         bfDoneT: "Cesta de desayuno confirmada", bfDoneB: "Entrega en tu cabaña a las", bfDoneC: "Editar cesta",
         bookB: "Tu reserva de hoy", bookC: "Ver", evB: "Evento de hoy", evC: "Ver en Explorar",
         concT1: "pedido en camino", concTn: "pedidos en camino", concB: "Síguelo en el concierge.", concC: "Seguir",
         coT: "Check-out a las", coTm: "Check-out mañana a las", coB: "¿Necesitas más tiempo? Puedo pedir late check-out.", coBm: "Tu último día con nosotros — si lo necesitas, puedo pedir un late check-out.", coC: "Pedir late check-out",
-        dndT: "No Molestar activo", dndB: "Limpieza pausada hasta", dndC: "Gestionar" },
+        dndT: "No Molestar activo", dndB: "Limpieza pausada hasta", dndC: "Gestionar",
+        houseTime: "La casa", houseT: "La casa hoy", houseC: "Ver en el mapa",
+        svTime: "Tu estadía", svT: "¿Qué te pareció tu estadía?", svB: "Toma solo un minuto y ayuda mucho.", svC: "Evaluar" },
 };
 
 interface TimelineItem {
@@ -162,6 +168,15 @@ export function HomeScreen() {
             }
             case "dnd":
                 return { ...base, time: tl.dnd, title: tl.dndT, body: `${tl.dndB} ${fmtClock(data.until)}`, cta: tl.dndC, onAction: () => go("stay") };
+            case "house": {
+                const areas = (data.areas as { name: string; nameEn?: string; nameEs?: string; hours: string }[] | undefined) || [];
+                const body = areas
+                    .map((a) => `${(lang === "en" && a.nameEn) || (lang === "es" && a.nameEs) || a.name} ${a.hours}`)
+                    .join(" · ");
+                return { ...base, time: tl.houseTime, title: tl.houseT, body, cta: tl.houseC, onAction: () => go("explore") };
+            }
+            case "survey":
+                return { ...base, time: tl.svTime, title: tl.svT, body: tl.svB, cta: tl.svC, onAction: () => push(`/feedback/${stay.id}`) };
             default:
                 return { ...base, time: "", title: "", body: "", cta: "", onAction: () => undefined };
         }

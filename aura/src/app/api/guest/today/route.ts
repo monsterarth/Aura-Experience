@@ -8,7 +8,7 @@ import { notEndedBefore } from "@/lib/event-dates";
 
 type TodayItem = {
     id: string;
-    kind: "breakfast" | "booking" | "event" | "concierge" | "checkout" | "dnd";
+    kind: "breakfast" | "booking" | "event" | "concierge" | "checkout" | "dnd" | "house" | "survey";
     icon: string;
     tone: string;
     urgent?: boolean;
@@ -25,6 +25,13 @@ const addDay = (iso: string, days: number) => {
     const [y, m, d] = iso.split("-").map(Number);
     const dt = new Date(Date.UTC(y, m - 1, d + days));
     return dt.toISOString().split("T")[0];
+};
+// Horário curto e neutro de idioma: "24h", "08:00 – 22:00", ou "" se não configurado.
+const formatHours = (oh?: { openTime?: string; closeTime?: string }): string => {
+    const o = oh?.openTime, c = oh?.closeTime;
+    if (!o || !c) return "";
+    if (o === "00:00" && (c === "23:59" || c === "00:00")) return "24h";
+    return `${o} – ${c}`;
 };
 
 export async function GET(req: NextRequest) {
@@ -46,7 +53,7 @@ export async function GET(req: NextRequest) {
     // Validação de posse
     const { data: stay } = await supabaseAdmin
         .from("stays")
-        .select("id, checkOut, dnd_enabled, dnd_until, cestaBreakfastEnabled, status")
+        .select("id, checkOut, dnd_enabled, dnd_until, cestaBreakfastEnabled, status, hasSurvey")
         .eq("id", stayId).eq("accessCode", accessCode).eq("propertyId", propertyId)
         .single();
     if (!stay) return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
@@ -58,7 +65,7 @@ export async function GET(req: NextRequest) {
     // Eram sequenciais — seis idas ao banco antes da primeira pintura do portal,
     // cada uma com a latência cheia de serverless + Postgres remoto.
     // (A checagem de posse acima continua ANTES de tudo: ela é quem autoriza.)
-    const [propertyRes, bookingsRes, eventsRes, conciergeRes] = await Promise.all([
+    const [propertyRes, bookingsRes, eventsRes, conciergeRes, houseRes] = await Promise.all([
         supabaseAdmin.from("properties").select("settings").eq("id", propertyId).maybeSingle(),
         supabaseAdmin
             .from("structure_bookings").select("id, structureId, startTime, status")
@@ -74,12 +81,17 @@ export async function GET(req: NextRequest) {
         supabaseAdmin
             .from("concierge_requests").select("id", { count: "exact", head: true })
             .eq("propertyId", propertyId).eq("stayId", stayId).in("status", ["pending", "in_progress"]),
+        // NÚCLEO: áreas informativas da casa (mapa) com horário — não depende de módulo.
+        supabaseAdmin
+            .from("structures").select("id, name, name_en, name_es, operatingHours")
+            .eq("propertyId", propertyId).eq("showOnMap", true),
     ]);
 
     const property = propertyRes.data;
     const bookings = bookingsRes.data;
     const events = eventsRes.data;
     const conciergeCount = conciergeRes.count;
+    const houseAreas = houseRes.data;
 
     const fb = property?.settings?.fbSettings?.breakfast;
     const resolved = fb?.modality === "both" ? (fb?.dailyMode ?? "delivery") : fb?.modality;
@@ -144,6 +156,31 @@ export async function GET(req: NextRequest) {
     // 6) Não Perturbe ativo
     if (stay.dnd_enabled) {
         items.push({ id: "dnd", kind: "dnd", icon: "moon", tone: "gold", sortKey: 800, data: { until: stay.dnd_until } });
+    }
+
+    // ── PRODUTORES DE NÚCLEO ────────────────────────────────────────────────
+    // A agenda tinha 6 fontes e 5 eram de módulo: sem módulo contratado a seção
+    // sumia (docs/PORTAL-NUCLEO.md §1). Estes dois produtores nascem de dado que
+    // o núcleo já tem — não dependem de nenhum módulo. São PREENCHIMENTO: recebem
+    // as MAIORES sortKeys (acima de dnd=800) para só ocuparem folga — nunca
+    // empurram cartão operacional (café, reserva, concierge, check-out) para fora
+    // do corte de 6. Quando a agenda está vazia, são os únicos e aparecem.
+
+    // 7) A casa hoje — áreas informativas do mapa e seus horários.
+    const areas = ((houseAreas || []) as { id: string; name: string; name_en?: string; name_es?: string; operatingHours?: { openTime?: string; closeTime?: string } }[])
+        .map((s) => ({ name: s.name, nameEn: s.name_en, nameEs: s.name_es, hours: formatHours(s.operatingHours) }))
+        .filter((a) => a.hours) // só entra quem tem horário configurado
+        .slice(0, 6);
+    if (areas.length > 0) {
+        items.push({ id: "house", kind: "house", icon: "compass", tone: "brand", sortKey: 900, data: { areas } });
+    }
+
+    // 8) Convite à pesquisa — só no último dia e só se ainda não respondeu.
+    if (stay.checkOut) {
+        const coDate = new Date(stay.checkOut).toISOString().split("T")[0];
+        if (coDate === date && stay.hasSurvey !== true) {
+            items.push({ id: "survey", kind: "survey", icon: "star", tone: "gold", sortKey: 950, data: {} });
+        }
     }
 
     items.sort((a, b) => a.sortKey - b.sortKey);
