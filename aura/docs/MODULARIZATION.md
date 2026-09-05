@@ -27,8 +27,9 @@ Custam minutos por feature e congelam a dívida de retrofit no tamanho de hoje.
 3. **Cron novo nasce com gate** de módulo no loop de propriedades.
 4. **Decisão de fronteira vai para este arquivo.**
 5. **(nova, 02/09) Chave só nasce na fatia que a APLICA.** Chave sem enforcement é toggle que
-   mente — é exatamente o defeito que a página de Módulos tem hoje (`modulos/page.tsx:46` promete
-   "desativa suas automações" e nenhum cron lê módulo nenhum).
+   mente — era o defeito da página de Módulos até 04/09 (prometia "desativa suas automações" e
+   nenhum cron lia módulo nenhum). **Vale para o texto também:** aviso de UI só promete o que o
+   código daquela fatia faz. A revisão da fatia 1 pegou quatro promessas falsas em texto e comentário.
 6. **(nova, 02/09) Chave nova vem com backfill explícito.** Ver seção 6 — `defaultOn` implícito já
    produziu dois defeitos medidos em produção.
 7. **(nova, 02/09) Nada de acesso a `guests` sem `propertyId`.** Ver seção 10.
@@ -172,9 +173,14 @@ nova nascendo com Estoque, e a armadilha de matar o Ponto (abaixo). A regra pass
 > **Toda fatia que introduz uma chave traz junto uma migration que grava o valor explícito para
 > as propriedades existentes.** Depois disso, o default de toda chave é **desligado**.
 
-Concretamente, a fatia 1 grava: `estanciadovale.hasStock = false` (nunca contratou) e mantém o
-resto como está. `estoque.defaultOn` vira `false`. Uma propriedade nova nasce com tudo desligado
-e o preset liga o que foi vendido.
+Concretamente, a fatia 1 grava as cinco flags em toda propriedade — o estoque decidido **pelo
+dado** (`EXISTS stock_settings`), não pelo nome: a Estância nunca salvou configuração de estoque e
+recebe `false`. `estoque.defaultOn` vira `false`. Uma propriedade nova nasce com tudo desligado e
+o preset liga o que foi vendido.
+
+**A única flag que continua default-LIGADO no sistema é `hasWeddingSite`** (`wedding-site-service.ts:163`,
+`=== false` à mão). Fica assim de propósito até a chave `casamentos` nascer: criar a chave só para
+o site seria chave sem enforcement do resto do módulo (regra 5).
 
 > **Armadilha verificada — o Ponto morre se ninguém prestar atenção.** `hasTimeclock: true` está
 > gravado na Fazenda e o Ponto entrou em produção em 01/09 com a folha de agosto carregada. No
@@ -223,8 +229,11 @@ Decisão do fundador: o "desligado" vale em **todas**.
 | 5 | **Portal + notificação** | Abas por módulo; roteamento de alerta por pessoa, não só por cargo |
 
 **A ordem importa: camada 1 antes da camada 2.** Esconder no menu e deixar a URL aberta é
-maquiagem — e com a busca do topo sem filtro (`AdminTopbar.tsx:213-217`), "some do menu" hoje
-significa "invisível na nav, alcançável por busca e por URL".
+maquiagem. Até 04/09 a busca do topo não filtrava por módulo e "some do menu" significava
+"invisível na nav, alcançável por Cmd+K e por URL"; a busca foi fechada na fatia 1. **A fatia 1
+violou esta ordem de propósito para `estoque`, `patrimônio` e `hsystem`** (menu e páginas antes
+das rotas) porque a Estância já tinha a API aberta e o menu à mostra — o commit só estreitou. A
+dívida está nomeada na fatia 3.
 
 **Armadilha do loop de login:** `ROLE_HOME` pode mandar um cargo direto para a página de um
 módulo desligado, que o `ModuleGuard` devolve — loop. Todo gate de rota precisa do fallback de
@@ -254,13 +263,24 @@ aplicá-lo; `estanciadovale` não tem mais Estoque no menu.
 **Fatia 2 — O piloto: desligar o salão na Fazenda.** Seção 9.
 *Pronto quando:* o salão sumiu, a cesta de café não perdeu um pedido sequer em 30 dias.
 
-**Fatia 3 — Navegação unificada.** Os seis mapas passando pelo mesmo filtro de cargo + módulo.
-*Pronto quando:* desligar `estoque` numa propriedade de teste não deixa **nenhum** item órfão
-(hoje sobram `estoque_config` em `Sidebar.tsx:231` e `painel_estoque` em `:103`), a busca não
-oferece a rota, e a URL direta devolve 403.
+**Fatia 3 — Navegação unificada + API fechada.** A fatia 1 já gateou menu, dropdown do Painel e
+busca para as 5 chaves existentes. O que falta, nomeado pela revisão adversarial de 04/09:
+- `requireModule` nas **17 rotas** de `api/admin/estoque/**` e `api/admin/patrimonio/**` e em
+  `api/admin/timeclock` (hoje sem gate nenhum: com Gente desligado o botão some e a API continua
+  batendo ponto). Admin/manager/compras da Estância chamam todas e recebem 200.
+- `ROLE_HOME`, `ROLE_TABS`, `ROUTE_LABELS` e o bounce do middleware cientes de módulo. Caso concreto:
+  `ROLE_HOME.compras = /admin/estoque` (`role-routes.ts:22`) numa pousada sem estoque cai no aviso
+  do `ModuleGuard`, cujo "Voltar ao Painel" redespacha para `/admin/estoque` — não é loop (o guard
+  renderiza), mas o botão é morto para esse cargo.
+- `<ModuleGuard module="hsystem">` em `/admin/hsystem` e **um** interruptor só para `hasHsystem` —
+  hoje há dois (página de Módulos e `hsystem/page.tsx:407`), com leitores diferentes.
+*Pronto quando:* desligar `estoque` numa propriedade de teste não deixa nenhum item órfão em
+nenhum dos seis mapas, e a URL direta de qualquer rota de módulo devolve 403.
 
 **Fatia 4 — Crons.** Gate nos 14, respeitando as armadilhas. `daily-lodging` **em separado** —
-gate errado nele é um tenant que para de ser cobrado por pernoite.
+gate errado nele é um tenant que para de ser cobrado por pernoite. Inclui trocar os dois leitores
+manuais de `hasHsystem === true` (`hsystem-service.ts:166,173` e `cron/hsystem-sync/route.ts:38-39`)
+pelo registry — hoje concordam por coincidência e divergem no dia em que `hsystem` ganhar pai.
 *Pronto quando:* a frase da página de Módulos passa a ser verdade e nenhuma propriedade sem
 módulo recebe linha nova. Fim do café fantasma.
 

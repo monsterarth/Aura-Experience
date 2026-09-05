@@ -77,8 +77,9 @@ export interface Property {
     hasBreakfast: boolean;
     hasKDS: boolean;
     // Flags de módulo — leitura SÓ por `isModuleOn` (src/lib/modules.ts), que
-    // resolve default e pai. Ausente = desligado; toda propriedade existente
-    // tem o valor explícito (migrations/modules_backfill_flags.sql).
+    // resolve default e pai. Ausente = desligado. As propriedades que existiam
+    // em 04/09/2026 receberam valor explícito (migrations/modules_backfill_flags.sql);
+    // propriedade nova nasce sem as chaves até o preset da fatia 8 gravá-las.
     hasStock?: boolean;          // Compras & Estoque (+ patrimônio)
     hasGuarita?: boolean;        // Guarita & Estacionamento
     hasHsystem?: boolean;        // Hsystem (canais)

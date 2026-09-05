@@ -25,8 +25,15 @@ export const StockIntegration = {
    */
   async isEnabled(propertyId: string): Promise<boolean> {
     try {
-      const { data } = await db().from("properties").select("settings").eq("id", propertyId).single();
-      return isModuleOn(data?.settings, "estoque");
+      const { data, error } = await db().from("properties").select("settings").eq("id", propertyId).single();
+      if (error || !data) {
+        // Antes (default ON) uma falha aqui BAIXAVA o estoque mesmo assim; agora
+        // pula a baixa. É o certo para módulo desligado, mas numa degradação do
+        // banco a entrega registra sem baixar — e isso precisa deixar rastro.
+        console.error(`[StockIntegration] settings indisponível para ${propertyId}; baixa pulada.`, error?.message);
+        return false;
+      }
+      return isModuleOn(data.settings, "estoque");
     } catch { return false; }
   },
 

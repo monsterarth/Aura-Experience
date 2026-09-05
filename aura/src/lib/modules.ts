@@ -35,8 +35,9 @@ interface ModuleDef {
    * medidos em produção: `hasStock` LIGADO por default fez a Estância do Vale —
    * que nunca contratou nada — nascer com o grupo Compras & Estoque no menu; e
    * `ponto` virar filho de `rh` mataria o Ponto na Fazenda se `hasRH` não
-   * estivesse gravado. O campo continua existindo como rede de segurança para
-   * uma propriedade criada fora do fluxo normal — não como regra de negócio.
+   * estivesse gravado. Propriedade NOVA nasce sem nenhuma dessas chaves
+   * (`core/properties/page.tsx` só grava as duas flags zumbis) e cai neste
+   * default — tudo desligado até o preset ligar o que foi vendido (fatia 8).
    */
   defaultOn: boolean;
   label: string;
@@ -64,13 +65,21 @@ export const MODULES: Record<ModuleKey, ModuleDef> = {
   // `ponto` vira feature de `rh`. Em produção a Fazenda já tem `hasRH: true` e
   // `hasTimeclock: true`, então nada muda para ela; para as demais o efeito é o
   // mesmo de antes (desligado). A flag própria continua existindo porque o Ponto
-  // é contratável separadamente dentro do módulo — quem não bate ponto não
-  // precisa ver o botão no topo.
+  // é contratável separadamente dentro do módulo. O que ela governa hoje: o item
+  // do menu, o relatório em /admin/ponto e o import do relógio (rh/afd). O botão
+  // de bater ponto no topo NÃO olha o módulo — decide por `staff.timeSource`
+  // (TimeClockButton.tsx), e a rota /api/admin/timeclock ainda não tem gate
+  // (fatia 3). Não prometer o contrário em texto de UI.
   ponto: { setting: "hasTimeclock", defaultOn: false, label: "Ponto", parent: "rh" },
 };
 
-/** A flag própria da chave, sem olhar o pai. */
-function ownFlag(settings: unknown, key: ModuleKey): boolean {
+/**
+ * A flag PRÓPRIA da chave, sem olhar o pai. É o que a página de Módulos deve
+ * semear e gravar: gravar o valor já resolvido pelo pai apagaria o `true` de um
+ * filho enquanto o pai está desligado — e "religar volta como estava" deixaria
+ * de ser verdade. Para saber se o módulo está de fato ligado, `isModuleOn`.
+ */
+export function isModuleFlagOn(settings: unknown, key: ModuleKey): boolean {
   const value = (settings as Record<string, unknown> | null | undefined)?.[MODULES[key].setting];
   return typeof value === "boolean" ? value : MODULES[key].defaultOn;
 }
@@ -84,7 +93,7 @@ function ownFlag(settings: unknown, key: ModuleKey): boolean {
  * por acidente. Feature só está ligada se a própria flag E o pai estiverem.
  */
 export function isModuleOn(settings: unknown, key: ModuleKey): boolean {
-  if (!ownFlag(settings, key)) return false;
+  if (!isModuleFlagOn(settings, key)) return false;
   const parent = MODULES[key].parent;
   return parent ? isModuleOn(settings, parent) : true;
 }

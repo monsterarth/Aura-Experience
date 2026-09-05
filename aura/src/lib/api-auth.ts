@@ -200,17 +200,23 @@ export function scopedPropertyId(
  *   if (off) return off;
  *
  * Propriedade inexistente cai em 403 também — uma propriedade que não existe
- * não tem módulo nenhum ligado.
+ * não tem módulo nenhum ligado. Falha do BANCO é outra coisa: vira 500, não
+ * "módulo desligado" — as quatro cópias antigas engoliam o erro e um banco
+ * degradado (como em 29/08) respondia MODULE_OFF a quem tinha o módulo.
  */
 export async function requireModule(propertyId: string, key: ModuleKey): Promise<NextResponse | null> {
     if (!supabaseAdmin) {
         return NextResponse.json({ error: 'Erro de configuração do servidor.' }, { status: 500 });
     }
-    const { data } = await supabaseAdmin
+    const { data, error } = await supabaseAdmin
         .from('properties')
         .select('settings')
         .eq('id', propertyId)
         .maybeSingle();
+    if (error) {
+        console.error(`[requireModule] falha ao ler settings de ${propertyId}:`, error.message);
+        return NextResponse.json({ error: 'Não foi possível verificar o módulo. Tente de novo.' }, { status: 500 });
+    }
     if (isModuleOn(data?.settings, key)) return null;
     return NextResponse.json(
         { error: `Módulo ${MODULES[key].label} desligado nesta propriedade.`, code: 'MODULE_OFF' },

@@ -242,7 +242,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "equipe",      label: "Equipe",            icon: Users,         href: "/admin/staff",                            roles: ["super_admin","admin","manager"] },
       { id: "nps",         label: "Pesquisas (NPS)",   icon: ClipboardList, href: "/admin/surveys",                          roles: ["super_admin","admin","manager"] },
       { id: "automacoes",  label: "Automações",        icon: Bot,           href: "/admin/comunicacao/automations/settings", roles: ["super_admin","admin"] },
-      // Liga/desliga em Configurações → Módulos (super_admin); a página só configura.
+      // Liga/desliga em Configurações → Módulos (super_admin). A própria página do
+      // Hsystem tem um segundo interruptor da MESMA chave (hsystem/page.tsx) —
+      // dois controles, um valor; unificar é escopo da fatia 3.
       { id: "hsystem",     label: "Hsystem",           icon: Plug,          href: "/admin/hsystem",                          roles: ["super_admin","admin","manager"], module: "hsystem" },
       // Levava para a lista multi-tenant, não para a configuração da pousada — e a tela
       // real de configuração não era alcançável pelo menu. Agora aponta para o hub.

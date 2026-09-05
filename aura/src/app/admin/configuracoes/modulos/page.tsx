@@ -8,6 +8,12 @@ import { SkeletonList } from "@/components/aura";
 //
 // É o ÚNICO lugar onde módulo não contratado aparece (fora do card do Painel
 // que vem na fatia 8) — decisão "informar sem poluir" de docs/MODULARIZATION.md §4.
+//
+// O rascunho guarda a flag PRÓPRIA de cada chave (`isModuleFlagOn`), não o
+// estado resolvido pelo pai. Semear o Ponto já resolvido faria qualquer save —
+// até ligar só a Guarita — gravar `hasTimeclock: false` numa pousada com Gente
+// desligado e Ponto contratado, e "religar volta como estava" viraria mentira.
+// O que a pessoa VÊ é o estado efetivo (`isModuleOn`); o que se GRAVA é a flag.
 import React from "react";
 import { useAuth } from "@/context/AuthContext";
 import { usePropertySection } from "../_lib/usePropertySection";
@@ -15,40 +21,38 @@ import { SaveBar } from "../_components/SaveBar";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { SettingRow } from "@/components/ui/SettingRow";
 import { Toggle } from "@/components/ui/Toggle";
-import { isModuleOn } from "@/lib/modules";
+import { childModules, isModuleFlagOn, MODULES } from "@/lib/modules";
 import { Blocks, Boxes, Car, Clock, CalendarDays, Plug } from "lucide-react";
 
 interface Draft { hasStock: boolean; hasGuarita: boolean; hasHsystem: boolean; hasRH: boolean; hasTimeclock: boolean }
 
+const RH_CHILDREN = childModules("rh").map((k) => MODULES[k].label).join(", ");
+
 export default function ModulosPage() {
   const { isSuperAdmin } = useAuth();
   const { draft, patch, dirty, saving, reset, save } = usePropertySection<Draft>((p) => ({
-    // A resposta vem de src/lib/modules.ts — o mesmo que o menu, as rotas e o
-    // ModuleGuard leem. Duas cópias da regra é como um módulo some do menu e
-    // continua aberto na API. `ponto` já sai resolvido com o pai: Gente desligado
-    // mostra o Ponto desligado, que é o que a pessoa de fato tem.
-    hasStock: isModuleOn(p.settings, "estoque"),
-    hasGuarita: isModuleOn(p.settings, "guarita"),
-    hasHsystem: isModuleOn(p.settings, "hsystem"),
-    hasRH: isModuleOn(p.settings, "rh"),
-    hasTimeclock: isModuleOn(p.settings, "ponto"),
+    hasStock: isModuleFlagOn(p.settings, "estoque"),
+    hasGuarita: isModuleFlagOn(p.settings, "guarita"),
+    hasHsystem: isModuleFlagOn(p.settings, "hsystem"),
+    hasRH: isModuleFlagOn(p.settings, "rh"),
+    hasTimeclock: isModuleFlagOn(p.settings, "ponto"),
   }));
 
   if (!draft) return <SkeletonList rows={5} avatar={false} />;
 
-  // Desligar o pai desliga o filho junto — a árvore do registry, refletida na UI.
-  const toggleRH = () => patch(draft.hasRH ? { hasRH: false, hasTimeclock: false } : { hasRH: true });
+  // Estado efetivo do Ponto: a flag dele E a do pai (mesma regra de isModuleOn).
+  const pontoOn = draft.hasRH && draft.hasTimeclock;
 
   const warning = !draft.hasStock
-    ? "Com o módulo desligado, Compras & Estoque e Patrimônio somem do menu e as páginas mostram o aviso de módulo desligado. Nada é apagado."
+    ? "Com o módulo desligado, Compras & Estoque e Patrimônio somem do menu e da busca, e as páginas mostram o aviso de módulo desligado. Nada é apagado."
     : !draft.hasGuarita
       ? "Com a Guarita desligada, a página some do menu e o app do porteiro para de responder."
       : !draft.hasHsystem
         ? "Com o Hsystem desligado, a página some do menu e o AURA para de buscar reservas no HUNIT. As reservas já importadas continuam."
         : !draft.hasRH
-          ? "Com Gente desligado, as abas de Escala e Ausências param de responder, o Ponto desliga junto e o app de campo deixa de mostrar o turno do dia. O cadastro da equipe continua funcionando, e o que já foi lançado fica guardado."
+          ? `Com Gente desligado, as abas de Escala e Ausências param de responder e a escala dos meses seguintes deixa de ser gerada. ${RH_CHILDREN} desliga junto. O cadastro da equipe continua funcionando, e o que já foi lançado fica guardado.`
           : !draft.hasTimeclock
-            ? "Com o Ponto desligado, o botão de bater ponto some do topo e a página sai do menu. As batidas já registradas ficam guardadas."
+            ? "Com o Ponto desligado, a página sai do menu e o import do relógio para de responder. Quem já bate ponto pelo cadastro continua batendo; as batidas ficam guardadas."
             : undefined;
 
   return (
@@ -56,7 +60,7 @@ export default function ModulosPage() {
       <SectionCard
         title="Módulos" icon={Blocks}
         description={isSuperAdmin
-          ? "Desligar um módulo tira suas telas do menu e da busca e bloqueia o acesso a elas. Nada é apagado — ligar de volta restaura tudo como estava."
+          ? "Desligar um módulo tira suas telas do menu e da busca. Nada é apagado — ligar de volta restaura tudo como estava."
           : "Somente leitura — a contratação de módulos é gerida pela plataforma."}
       >
         <SettingRow
@@ -80,7 +84,7 @@ export default function ModulosPage() {
         <SettingRow
           title="Hsystem (canais)"
           icon={Plug}
-          description="Reservas das OTAs entrando sozinhas pelo HUNIT, com encaixe automático por categoria. Credenciais e modo (sombra/ativo) ficam na página do Hsystem."
+          description="Reservas das OTAs entrando sozinhas pelo HUNIT, com encaixe automático por categoria. Credenciais e modo (sombra/ativo) ficam na página do Hsystem, que também tem este interruptor."
           onClick={isSuperAdmin ? () => patch({ hasHsystem: !draft.hasHsystem }) : undefined}
         >
           <Toggle checked={draft.hasHsystem} disabled={!isSuperAdmin} label="Hsystem" />
@@ -90,7 +94,7 @@ export default function ModulosPage() {
           title="Gente (escala e ausências)"
           icon={CalendarDays}
           description="Escala do mês gerada a partir da jornada de cada pessoa, férias, atestado e afastamento, e o turno do dia dentro dos apps de campo. O cadastro da equipe não depende deste módulo."
-          onClick={isSuperAdmin ? toggleRH : undefined}
+          onClick={isSuperAdmin ? () => patch({ hasRH: !draft.hasRH }) : undefined}
         >
           <Toggle checked={draft.hasRH} disabled={!isSuperAdmin} label="Gente" />
         </SettingRow>
@@ -99,11 +103,13 @@ export default function ModulosPage() {
           title="Ponto"
           icon={Clock}
           description={draft.hasRH
-            ? "Registro de entrada e saída pelo próprio funcionário, com relatório de horas por período. Quem bate ponto é definido pessoa a pessoa no cadastro da equipe. Parte de Gente."
-            : "Parte de Gente — ligue Gente para poder ligar o Ponto."}
+            ? "Relatório de horas por período e import do relógio de ponto. Quem bate ponto é definido pessoa a pessoa no cadastro da equipe. Parte de Gente."
+            : draft.hasTimeclock
+              ? "Contratado, mas desligado junto com Gente — volta sozinho quando Gente religar."
+              : "Parte de Gente — ligue Gente para poder ligar o Ponto."}
           onClick={isSuperAdmin && draft.hasRH ? () => patch({ hasTimeclock: !draft.hasTimeclock }) : undefined}
         >
-          <Toggle checked={draft.hasTimeclock} disabled={!isSuperAdmin || !draft.hasRH} label="Ponto" />
+          <Toggle checked={pontoOn} disabled={!isSuperAdmin || !draft.hasRH} label="Ponto" />
         </SettingRow>
       </SectionCard>
 
