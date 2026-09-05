@@ -20,11 +20,21 @@
 // depois da abertura (a última às 16:01, com a área fechada desde as 11:00).
 // Silêncio no dia bom é o que mantém o alerta valendo alguma coisa no dia ruim.
 //
-// JANELA: agendado em `vercel.json` como `*/15 9-16 * * *` (UTC) = 06:00–13:59 no
-// fuso da casa. Cobre o T-30 de área que abre entre 06:30 e 14:29 — hoje o quiosque
-// (10:30) e a jacuzzi (11:00). Área de liberação diária que abrisse fora dessa faixa
-// continuaria aparecendo no sino, mas não geraria push: se isso acontecer, esticar a
-// janela aqui é a correção, não mexer na regra.
+// AGENDAMENTO: cron EXTERNO (cronjob.org), a cada 15 min entre 06:00 e 14:00 BRT —
+// NÃO está em `vercel.json`, junto de `process-messages` e `hsystem-sync`. O motivo é
+// medido, não preferência: no plano Hobby a Vercel dispara o cron UMA vez por dia e
+// com atraso de 2 a 55 min (conferido em 8 dias de produção — `breakfast-attendance`
+// agendado 05:00 e rodando até 05:44; `daily-automations` agendado 08:00 e rodando
+// até 08:55). Uma execução diária em hora imprevisível é pior que nenhuma aqui: se
+// cair antes do T-30, `releaseAlertLevel` devolve `none` e o push não sai — em
+// silêncio, sem erro em lugar nenhum.
+//
+// A janela cobre o T-30 de área que abre entre 06:30 e 14:00 — hoje o quiosque (10:30)
+// e a jacuzzi (11:00). Área que abrisse fora dessa faixa continuaria no sino, mas sem
+// push: esticar a janela no cronjob.org é a correção, não mexer na regra.
+//
+// Nada disso vale para o sino: ele é derivado do estado e recalcula sozinho a cada
+// 30 s no navegador. Se este cron parar, o alerta continua de pé — só o push cala.
 //
 // Sem gate de módulo de propósito: estruturas é core (portal, mapa e agenda
 // dependem dela), não um módulo desligável do registry em `@/lib/modules`.

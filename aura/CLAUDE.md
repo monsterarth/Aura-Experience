@@ -102,9 +102,8 @@ Scheduled in `vercel.json` (UTC):
 | `daily-lodging` | `15 8 * * *` | 08:15 daily (lança diárias vencidas no fólio) |
 | `wedding-status` | `30 8 * * *` | 08:30 daily (casamento confirmado que passou → realizado) |
 | `crm-status` | `45 8 * * *` | 08:45 daily (orçamento com prazo/data vencidos → perdido) |
-| `structure-release` | `*/15 9-16 * * *` | a cada 15 min, 06:00–13:59 BRT (push à recepção quando área de liberação diária segue fechada 30 min antes de abrir) |
 
-Other cron-style routes exist in code but are **not** in `vercel.json` (triggered manually/externally): `process-messages`, `whatsapp-watchdog`, `housekeeping-routines`, `hsystem-sync` (polling do HUNIT — cron externo a cada 1–5 min; ver módulo Hsystem abaixo). All cron routes check the `CRON_SECRET` header in production. Details in `docs/CRON.md`.
+Other cron-style routes exist in code but are **not** in `vercel.json` (triggered manually/externally): `process-messages`, `whatsapp-watchdog`, `housekeeping-routines`, `hsystem-sync` (polling do HUNIT — cron externo a cada 1–5 min; ver módulo Hsystem abaixo), `structure-release` (push de área de liberação diária ainda fechada — cron externo a cada 15 min entre 06:00 e 14:00 BRT; **fora do `vercel.json` de propósito**: no plano Hobby o disparo é 1x/dia com 2–55 min de deriva, medido, e o push não sairia). All cron routes check the `CRON_SECRET` header in production. Details in `docs/CRON.md`.
 
 **Hsystem (channel manager)**: módulo em `src/services/hsystem-service.ts` + `src/lib/hunit.ts` (protocolo XML do HUNIT) + página `/admin/hsystem`. Flag `settings.hasHsystem` (super_admin) e config em `settings.hsystemConfig`; credenciais no cofre `property_secrets`. Dois modos: `shadow` (espelha reservas sem confirmar nem enviar disponibilidade — produção em paralelo com o HMAX) e `active` (fluxo completo — sandbox de homologação / pós-troca de PMS). Reserva entra por categoria e o service encaixa sozinho numa cabana livre (`categoryMap`); estadia importada carrega `source`/`externalId`/`externalRoomId`.
 

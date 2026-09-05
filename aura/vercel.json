@@ -43,10 +43,6 @@
     {
       "path": "/api/cron/crm-status",
       "schedule": "45 8 * * *"
-    },
-    {
-      "path": "/api/cron/structure-release",
-      "schedule": "*/15 9-16 * * *"
     }
   ]
 }

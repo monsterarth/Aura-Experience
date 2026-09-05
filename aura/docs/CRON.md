@@ -24,7 +24,6 @@ Schedules in `vercel.json` are **UTC**. The resort runs on BRT (UTC−3), so e.g
 | `daily-lodging` | `15 8 * * *` | Posts due nightly lodging charges (diárias) to stay folios |
 | `wedding-status` | `30 8 * * *` | Past **confirmed** → `completed`; past **tentative** → `lost` |
 | `crm-status` | `45 8 * * *` | Archives stale reservation quotes (`rate_quotes`) as `lost` |
-| `structure-release` | `*/15 9-16 * * *` | Pushes the front desk when a daily-release area is still locked 30 min before it opens |
 
 ### `daily-automations`
 For each property: loads active `automation_rules` (those with a `templateId`) and
@@ -92,13 +91,22 @@ Each archived quote also gets a `lost` row in `crm_interactions` (actor `cron`).
 defaults live in `properties.settings.crmQuoteLead` (3/30/30); "Registrar follow-up" renews.
 **Writes to** `rate_quotes.status/lostReason/lostAt`, `crm_interactions`, `audit_logs`.
 
-### `structure-release`
-Runs every 15 min from 09:00 to 16:59 UTC (06:00–13:59 BRT). Sends **one push per area, per
-day** to `reception` + `manager` when a `requiresDailyRelease` structure is still locked
-`RELEASE_WARN_LEAD_MINUTES` (30) before its `operatingHours.openTime`. Level comes from
-`releaseAlertLevel` in `src/lib/structure-release.ts` — the same rule the bell reads, so push
-and panel never disagree. Areas fully out of service (`outOfService`, or every unit in
-`unitStatus`) are skipped: there is nothing to release.
+### `structure-release` — **external cron, not in `vercel.json`**
+Triggered by cronjob.org every 15 min between 06:00 and 14:00 BRT (same place as
+`process-messages` and `hsystem-sync`), with `Authorization: Bearer $CRON_SECRET`.
+
+**Why it is not a Vercel cron:** on the Hobby plan Vercel fires each cron **once a day, with
+2–55 min of drift** — measured over 8 production days (`breakfast-attendance` scheduled 05:00,
+observed up to 05:44; `daily-automations` scheduled 08:00, observed up to 08:55). One daily run
+at an unpredictable hour is worse than none here: if it lands before the T-30 mark,
+`releaseAlertLevel` returns `none` and the push never goes out — silently, with no error
+anywhere.
+
+Sends **one push per area, per day** to `reception` + `manager` when a `requiresDailyRelease`
+structure is still locked `RELEASE_WARN_LEAD_MINUTES` (30) before its `operatingHours.openTime`.
+Level comes from `releaseAlertLevel` in `src/lib/structure-release.ts` — the same rule the bell
+reads, so push and panel never disagree. Areas fully out of service (`outOfService`, or every
+unit in `unitStatus`) are skipped: there is nothing to release.
 
 Why it exists (measured 06/06→05/09/2026): **43 of 92 days** had guests on site and the jacuzzi
 was never released — none of them for maintenance — and all 14 guest bookings of the period
@@ -107,8 +115,9 @@ the portal, so nobody asks. Of the 42 releases that did happen, 30 (71%) were al
 before the T-30 mark, so on a good day this cron says nothing.
 
 Dedupe is `structures."releaseAlertSentFor"` (YYYY-MM-DD), written **after** the send so a
-failed push retries on the next run. An area opening outside the 06:00–13:59 window still
-shows in the bell but gets no push — widen the schedule if that ever happens.
+failed push retries on the next run. The bell and the urgent card do **not** depend on this
+cron — they derive from `releasedForDate` and re-evaluate every 30 s in the browser. If the
+external trigger dies, the alert still works; only the push goes quiet.
 **Writes to** `structures."releaseAlertSentFor"`, `audit_logs` (`STRUCTURE_RELEASE_ALERT`).
 
 ### `daily-lodging`
@@ -131,6 +140,7 @@ seems "stuck", check whether an external trigger is actually hitting them.
 | `whatsapp-watchdog` | Standalone watchdog (`WhatsAppHealthService`): probes Evolution from outside (timeout = frozen process) and checks recent real-send results; restarts the Evolution service via the Coolify API (30 min cooldown) and pushes alerts to admins/managers | Optional — the same logic already piggybacks on `process-messages`; this adds coverage when the queue is idle. Suggested every 10–15 min. Needs `EVOLUTION_API_*` + `COOLIFY_*` |
 | `housekeeping-routines` | Applies fixed-interval housekeeping rules (`applyFixedIntervalRules`) per property | Complements `daily-housekeeping` |
 | `hsystem-sync` | Polling do HUNIT (Hsystem) por propriedade com `settings.hasHsystem`: busca reservas (`booking/read` → cria/atualiza/cancela estadias → `confirme/post` só em modo `active`) e envia disponibilidade (idempotente por hash, só em `active` + `pushAvailability`) | Cron EXTERNO (ex.: cronjob.org) a cada 1–5 min — a Hsystem recomenda 1 min; limites 60 req/min. `Authorization: Bearer $CRON_SECRET` |
+| `structure-release` | Pushes `reception` + `manager` when a `requiresDailyRelease` area is still locked 30 min before it opens. One push per area per day (`structures."releaseAlertSentFor"`). Full section above | Cron EXTERNO (cronjob.org) a cada 15 min entre 06:00 e 14:00 BRT. `Authorization: Bearer $CRON_SECRET`. **Não** ponha em `vercel.json`: no Hobby o disparo é 1x/dia com 2–55 min de deriva e o push simplesmente não sai |
 
 ### WhatsApp watchdog — how it decides (see `src/services/whatsapp-health-service.ts`)
 
