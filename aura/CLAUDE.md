@@ -214,7 +214,7 @@ Deeper docs live in `docs/`, read on demand:
   Não iniciado. **A Onda 0 é segurança** (segredo de produção commitado em `scripts/dev/`, `/api/media`
   como proxy aberto sem auth, chave GCP órfã) — atacar antes do resto. Traz também as regras de
   "isto parece morto mas não é" (cron externo, webhook, rota montada por string).
-- `docs/MODULARIZATION.md` — core × módulos / planos por propriedade. Execution deferred, but its **section 1 rules apply NOW** to all new code: new module → settings flag day one; core flows never hard-depend on module tables (soft check, default ON — `stock-integration.ts` pattern); new crons skip properties without the module.
+- `docs/MODULARIZATION.md` — core × módulos / planos por propriedade. **EM EXECUÇÃO** (reescrito em 02/09/2026 com a taxonomia fechada, o piloto do salão e as armadilhas medidas em produção). As **7 regras da seção 1 valem para todo código novo**: módulo novo nasce com flag; fluxo core nunca depende duro de tabela de módulo (check suave — padrão `stock-integration.ts`); cron novo nasce com gate; **chave só nasce na fatia que a aplica**; **chave nova vem com migration de backfill explícito** (`defaultOn` implícito já causou dois defeitos em produção); **nenhum acesso a `guests` sem `propertyId`**.
 
 Area-specific `CLAUDE.md` files are auto-loaded when working in: `src/services/`, `src/app/admin/`, `src/app/api/`, `src/app/check-in/`.
 
