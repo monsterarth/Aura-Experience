@@ -100,25 +100,27 @@ export const GuestService = {
       updatedAt: new Date().toISOString()
     };
 
-    // `guests.id` é o CPF e é chave primária GLOBAL: sem esta trava a pousada B
-    // sobrescrevia a ficha da pousada A e levava o `propertyId` junto — A perdia o
-    // hóspede (medido em produção em 02/09/2026: 17 estadias + 1 contato contaminados).
-    // Enquanto a chave não for composta (propertyId, id), o mesmo documento não pode
-    // viver em duas propriedades — recusar com mensagem é melhor do que corromper.
+    // Entre 04/09 e 05/09/2026 havia aqui uma trava: documento já usado em outra
+    // pousada era RECUSADO, porque a chave era global e o upsert sobrescrevia a
+    // ficha alheia. A chave composta (propertyId, id) tornou a trava desnecessária
+    // e indesejável — o mesmo hóspede pode se hospedar em duas pousadas, e cada
+    // uma tem a SUA ficha. Nenhuma enxerga a da outra.
+    //
+    // A leitura continua, agora ESCOPADA, só para o log distinguir criação de
+    // atualização: ficha do mesmo documento na pousada vizinha não faz desta um
+    // "update".
     const { data: existing } = await db()
       .from('guests')
-      .select('id, propertyId')
+      .select('id')
       .eq('id', id)
+      .eq('propertyId', propertyId)
       .maybeSingle();
-
-    // Linha legada sem propriedade (0 em produção) é reclamável — só o de OUTRA pousada barra.
-    if (existing?.propertyId && existing.propertyId !== propertyId) {
-      throw new Error(`O documento ${id} já pertence a uma ficha de outra propriedade. A ficha não foi gravada.`);
-    }
 
     const { error } = await db()
       .from('guests')
-      .upsert(payload, { onConflict: 'id' });
+      // Casa com a chave composta (propertyId, id) de migrations/guests_composite_pk.sql:
+      // o mesmo documento em outra pousada é OUTRA ficha, não conflito.
+      .upsert(payload, { onConflict: 'propertyId,id' });
 
     if (error) {
       console.error("Error upserting guest:", error);
@@ -328,19 +330,17 @@ export const GuestService = {
 
     try {
       const { data: temp } = await db().from('guests').select('*').eq('id', currentId).eq('propertyId', propertyId).maybeSingle();
-      if (!temp || temp.propertyId !== propertyId) return currentId;
+      if (!temp) return currentId;
       if (!hasValidDocument(temp.document)) return currentId;
 
       const newId = normalizeDocument(temp.document?.number);
       if (!newId || newId === currentId) return currentId;
 
-      // Sem filtro de propriedade: `guests.id` é chave primária global, então um
-      // documento já usado em OUTRA propriedade faria o insert estourar. Melhor sair.
-      const { data: target } = await db().from('guests').select('*').eq('id', newId).maybeSingle();
-      if (target && target.propertyId !== propertyId) {
-        console.error(`[promoteGuestId] ${newId} já existe em outra propriedade — ficha ${currentId} mantida.`);
-        return currentId;
-      }
+      // Escopado pela propriedade: o mesmo documento em OUTRA pousada é outra ficha
+      // e não interessa aqui. Antes da chave composta esta leitura era global e a
+      // promoção desistia em silêncio quando o documento existia noutro tenant — o
+      // hóspede recorrente ficava com id provisório para sempre.
+      const { data: target } = await db().from('guests').select('*').eq('id', newId).eq('propertyId', propertyId).maybeSingle();
 
       if (target) {
         const patch = this._mergeBlankFields(target, temp);

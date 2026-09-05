@@ -894,18 +894,15 @@ export const HsystemService = {
     let phone = (g?.phone ?? "").replace(/\D/g, "");
     if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
 
-    const { data: existing } = await db().from("guests").select("id, propertyId, fullName, email, phone").eq("id", id).maybeSingle();
-    if (existing && existing.propertyId !== propertyId) {
-      // id (PK global) pertence a outra propriedade — cai no provisório.
-      id = provisionalId;
-    }
-
-    const { data: current } = existing && existing.propertyId === propertyId
-      ? { data: existing }
-      : await db().from("guests").select("id, propertyId, fullName, email, phone").eq("id", id).maybeSingle();
+    // Escopado pela propriedade. Antes da chave composta esta leitura era global e,
+    // quando o CPF já existia em OUTRA pousada, a reserva caía no id provisório —
+    // hóspede recorrente de canal virava ficha nova a cada vez, para sempre.
+    const { data: current } = await db()
+      .from("guests").select("id, propertyId, fullName, email, phone")
+      .eq("id", id).eq("propertyId", propertyId).maybeSingle();
 
     const nowIso = new Date().toISOString();
-    if (current && current.propertyId === propertyId) {
+    if (current) {
       const patch: Record<string, unknown> = {};
       if (!current.email && g?.email) patch.email = g.email;
       if (!current.phone && phone) patch.phone = phone;
