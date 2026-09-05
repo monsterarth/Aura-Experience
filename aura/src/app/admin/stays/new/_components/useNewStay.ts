@@ -269,6 +269,9 @@ export function useNewStay() {
         const conflictingCabinId = msg.split(":")[1];
         const sel = cabinSelections.find(s => s.cabinId === conflictingCabinId);
         toast.error(`Conflito de datas: ${sel?.name || conflictingCabinId} já possui uma reserva neste período.`, { id: toastId, duration: 6000 });
+      } else if (msg.includes("outra propriedade")) {
+        // CPF já é ficha de outra propriedade: a reserva não foi criada e a recepção precisa saber por quê.
+        toast.error(msg, { id: toastId, duration: 8000 });
       } else {
         toast.error("Erro interno ao processar hospedagem.", { id: toastId });
       }

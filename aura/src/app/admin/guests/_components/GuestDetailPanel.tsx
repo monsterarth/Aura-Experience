@@ -108,8 +108,9 @@ export function GuestDetailPanel({ guest, propertyId, onBack, onUpdated, onMerge
         toast.success("Dados do hóspede atualizados.");
       }
       chatwootSyncOnStayCreated(propertyId, savedId).catch(() => {});
-    } catch {
-      toast.error("Erro ao salvar.");
+    } catch (err: any) {
+      // A recusa por documento de outra propriedade vem com mensagem — mostrar, não engolir.
+      toast.error(err?.message || "Erro ao salvar.");
     } finally {
       setSaving(false);
     }

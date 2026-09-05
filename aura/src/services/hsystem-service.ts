@@ -910,7 +910,7 @@ export const HsystemService = {
       if (!current.email && g?.email) patch.email = g.email;
       if (!current.phone && phone) patch.phone = phone;
       if (Object.keys(patch).length > 0) {
-        await db().from("guests").update({ ...patch, updatedAt: nowIso }).eq("id", id);
+        await db().from("guests").update({ ...patch, updatedAt: nowIso }).eq("id", id).eq("propertyId", propertyId);
       }
       return id;
     }

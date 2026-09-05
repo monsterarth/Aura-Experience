@@ -14,15 +14,19 @@ export const GuestService = {
    * (113 FKs no schema, nenhuma aponta para cá): quem troca o id da ficha precisa
    * repontuar esta lista na mão, ou sobram linhas apontando para ficha inexistente.
    */
-  GUEST_REF_TABLES: ['stays', 'contacts', 'structure_bookings', 'structure_reviews', 'survey_responses', 'rate_quotes'] as const,
+  GUEST_REF_TABLES: ['stays', 'contacts', 'structure_bookings', 'structure_reviews', 'survey_responses', 'rate_quotes', 'vehicles'] as const,
 
-  /** Move todas as referências de uma ficha para outra. Server-side. */
-  async _repointGuestRefs(fromId: string, toId: string): Promise<Record<string, number>> {
+  /**
+   * Move todas as referências de uma ficha para outra. Server-side.
+   * Escopado por propriedade: `guests.id` é o CPF e é chave GLOBAL, então o mesmo id
+   * pode ter linhas de OUTRA pousada — repontar sem filtro levaria as dela junto.
+   */
+  async _repointGuestRefs(propertyId: string, fromId: string, toId: string): Promise<Record<string, number>> {
     const moved: Record<string, number> = {};
     // Sequencial de propósito: se uma tabela falhar, as anteriores já migraram e o
     // erro sobe antes do delete da ficha — sobra duplicata, nunca órfã.
     for (const table of this.GUEST_REF_TABLES) {
-      const { data, error } = await db().from(table).update({ guestId: toId }).eq('guestId', fromId).select('id');
+      const { data, error } = await db().from(table).update({ guestId: toId }).eq('guestId', fromId).eq('propertyId', propertyId).select('id');
       if (error) throw new Error(`Falha ao migrar ${table}: ${error.message}`);
       if (data?.length) moved[table] = data.length;
     }
@@ -96,11 +100,21 @@ export const GuestService = {
       updatedAt: new Date().toISOString()
     };
 
+    // `guests.id` é o CPF e é chave primária GLOBAL: sem esta trava a pousada B
+    // sobrescrevia a ficha da pousada A e levava o `propertyId` junto — A perdia o
+    // hóspede (medido em produção em 02/09/2026: 17 estadias + 1 contato contaminados).
+    // Enquanto a chave não for composta (propertyId, id), o mesmo documento não pode
+    // viver em duas propriedades — recusar com mensagem é melhor do que corromper.
     const { data: existing } = await db()
       .from('guests')
-      .select('id')
+      .select('id, propertyId')
       .eq('id', id)
       .maybeSingle();
+
+    // Linha legada sem propriedade (0 em produção) é reclamável — só o de OUTRA pousada barra.
+    if (existing?.propertyId && existing.propertyId !== propertyId) {
+      throw new Error(`O documento ${id} já pertence a uma ficha de outra propriedade. A ficha não foi gravada.`);
+    }
 
     const { error } = await db()
       .from('guests')
@@ -249,7 +263,7 @@ export const GuestService = {
     // Antes daqui só as estadias eram movidas — contatos, reservas de estrutura,
     // pesquisas e orçamentos ficavam apontando para a ficha recém-apagada.
     // Falha aqui NÃO pode seguir para o delete: apagaria a ficha deixando órfãos.
-    const moved = await this._repointGuestRefs(secondaryId, primaryId);
+    const moved = await this._repointGuestRefs(propertyId, secondaryId, primaryId);
 
     const { error: delErr } = await db()
       .from('guests')
@@ -331,7 +345,7 @@ export const GuestService = {
       if (target) {
         const patch = this._mergeBlankFields(target, temp);
         if (Object.keys(patch).length > 0) {
-          await db().from('guests').update({ ...patch, updatedAt: new Date().toISOString() }).eq('id', newId);
+          await db().from('guests').update({ ...patch, updatedAt: new Date().toISOString() }).eq('id', newId).eq('propertyId', propertyId);
         }
       } else {
         const { error } = await db()
@@ -340,8 +354,8 @@ export const GuestService = {
         if (error) throw error;
       }
 
-      const moved = await this._repointGuestRefs(currentId, newId);
-      const { error: delErr } = await db().from('guests').delete().eq('id', currentId);
+      const moved = await this._repointGuestRefs(propertyId, currentId, newId);
+      const { error: delErr } = await db().from('guests').delete().eq('id', currentId).eq('propertyId', propertyId);
       if (delErr) throw delErr;
 
       const refs = Object.entries(moved).map(([t, n]) => `${n} ${t}`).join(', ') || 'nenhuma referência';

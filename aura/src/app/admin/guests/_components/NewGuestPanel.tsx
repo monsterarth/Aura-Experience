@@ -41,8 +41,8 @@ export function NewGuestPanel({ propertyId, onBack, onCreated, onDirtyChange, ac
       toast.success("Hóspede criado com sucesso.");
       onDirtyChange?.(false);
       onCreated(created);
-    } catch {
-      toast.error("Erro ao criar hóspede.");
+    } catch (err: any) {
+      toast.error(err?.message || "Erro ao criar hóspede.");
     } finally {
       setSaving(false);
     }

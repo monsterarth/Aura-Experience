@@ -239,6 +239,7 @@ export const StayService = {
       .from('stays')
       .select('guestId, petException')
       .eq('id', stayId)
+      .eq('propertyId', propertyId)
       .single();
 
     if (!stay) return;
@@ -261,6 +262,7 @@ export const StayService = {
         ? db().from('guests')
             .update({ ...safeGuest, updatedAt: new Date().toISOString() })
             .eq('id', stay.guestId)
+            .eq('propertyId', propertyId)
         : Promise.resolve()
     ]);
   },
@@ -321,7 +323,7 @@ export const StayService = {
 
   async completePreCheckin(propertyId: string, stayId: string, stayUpdate: Partial<Stay>, guestUpdate: Partial<Guest>): Promise<string> {
     // Busca id do guest e dados de grupo
-    const { data: stay } = await db().from('stays').select('guestId, groupId, accessCode, status, petException').eq('id', stayId).single();
+    const { data: stay } = await db().from('stays').select('guestId, groupId, accessCode, status, petException').eq('id', stayId).eq('propertyId', propertyId).single();
     if (!stay) throw new Error("Stay not found");
 
     let finalAccessCode = stay.accessCode;
@@ -358,7 +360,9 @@ export const StayService = {
     // Supabase JS doesnt have explicit transactions, we do parallel awaited calls
     const [stayRes, guestRes] = await Promise.all([
       db().from('stays').update({ ...sanitizedStayUpdate, status: nextStatus, updatedAt: new Date().toISOString() }).eq('id', stayId),
-      db().from('guests').update({ ...sanitizedGuestUpdate, updatedAt: new Date().toISOString() }).eq('id', stay.guestId)
+      // Escopado: a ficha de OUTRA propriedade com o mesmo CPF não pode ser editada por aqui
+      // (`guests.id` é chave global). Se não bater, o update não toca linha nenhuma.
+      db().from('guests').update({ ...sanitizedGuestUpdate, updatedAt: new Date().toISOString() }).eq('id', stay.guestId).eq('propertyId', propertyId)
     ]);
 
     if (stayRes.error) throw new Error(`Falha ao atualizar a estadia: ${stayRes.error.message}`);
@@ -457,7 +461,7 @@ export const StayService = {
     if (!stay) return null;
 
     const [gRes, cRes] = await Promise.all([
-      db().from('guests').select('*').eq('id', stay.guestId).maybeSingle(),
+      db().from('guests').select('*').eq('id', stay.guestId).eq('propertyId', propertyId).maybeSingle(),
       stay.cabinId
         ? db().from('cabins').select('*').eq('id', stay.cabinId).eq('propertyId', propertyId).maybeSingle()
         : Promise.resolve({ data: null })

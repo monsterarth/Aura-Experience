@@ -285,6 +285,9 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       if (msg.startsWith("CABIN_NOT_AVAILABLE")) {
         const label = msg.split(":")[2] ?? "indisponível";
         toast.error(`Transferência bloqueada: acomodação ${label}. Verifique antes de prosseguir.`);
+      } else if (msg.includes("outra propriedade")) {
+        // Documento já usado por ficha de outra propriedade: a recusa precisa chegar à tela.
+        toast.error(msg);
       } else {
         toast.error("Erro ao salvar alterações.");
       }
