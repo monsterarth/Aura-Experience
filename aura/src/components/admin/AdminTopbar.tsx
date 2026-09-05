@@ -9,6 +9,7 @@ import { ChevronRight, Search, X, Menu, Settings2 } from "lucide-react";
 import { NotificationCenter } from "@/components/admin/NotificationCenter";
 import { filterDomains } from "@/app/admin/configuracoes/_lib/catalog";
 import { UserRole } from "@/types/aura";
+import { isModuleOn, type ModuleKey } from "@/lib/modules";
 import { T } from "@/lib/admin-tokens";
 import { IconButton } from "@/components/aura/Button";
 import { Dialog } from "@/components/aura/Dialog";
@@ -140,8 +141,13 @@ interface SearchItem {
   href: string;
   keywords?: string[];
   context?: string;
+  /** Rota de módulo desligável — a busca não a oferece com o módulo desligado. */
+  module?: ModuleKey;
 }
 
+// Módulo não contratado não aparece em lugar nenhum fora de Configurações →
+// Módulos — nem aqui. Antes a busca entregava Guarita, Hsystem e Estoque para
+// quem não tinha o módulo: "some do menu" significava "alcançável pelo Cmd+K".
 const SEARCH_ROUTES: SearchItem[] = [
   { label: "Estadias",          href: "/admin/stays", keywords: ["reserva", "hospedagem", "estadia", "booking"] },
   { label: "Mapa de Reservas",  href: "/admin/reservation-map", keywords: ["mapa", "reserva", "ocupação", "disponibilidade", "calendário"] },
@@ -152,19 +158,19 @@ const SEARCH_ROUTES: SearchItem[] = [
   { label: "Eventos",           href: "/admin/eventos", keywords: ["evento", "programação"] },
   { label: "Casamentos",        href: "/admin/casamentos", keywords: ["casamento", "noivos", "lead"] },
   { label: "Tarifário",         href: "/admin/tarifario", keywords: ["tarifa", "preço", "diária", "tabela", "flutuação"] },
-  { label: "Hsystem",           href: "/admin/hsystem", keywords: ["hsystem", "hunit", "hbook", "hprice", "channel", "canal", "ota", "integração", "disponibilidade"] },
+  { label: "Hsystem",           href: "/admin/hsystem", keywords: ["hsystem", "hunit", "hbook", "hprice", "channel", "canal", "ota", "integração", "disponibilidade"], module: "hsystem" },
   { label: "Pipeline Estadias", href: "/admin/comercial/reservas", keywords: ["orçamento", "cotação", "funil", "lead", "pipeline"] },
   { label: "Manutenção",        href: "/admin/maintenance", keywords: ["manutenção", "conserto", "defeito", "os"] },
   { label: "Kanban Manutenção", href: "/admin/maintenance/kanban", keywords: ["manutenção", "kanban", "ordem"] },
   { label: "Governança",        href: "/admin/governance", keywords: ["governança", "faxina", "camareira", "limpeza"] },
   { label: "Kanban Governança", href: "/admin/governance/kanban", keywords: ["governança", "faxina", "kanban"] },
   { label: "Concierge",         href: "/admin/concierge", keywords: ["concierge", "pedido", "frigobar", "amenidade"] },
-  { label: "Guarita",           href: "/admin/guarita", keywords: ["guarita", "estacionamento", "porteiro", "placa", "veículo", "carro", "tarifa"] },
-  { label: "Estoque",           href: "/admin/estoque", keywords: ["estoque", "compras", "produto", "movimentação"] },
-  { label: "Compras",           href: "/admin/estoque/compras", keywords: ["compra", "nota fiscal", "nf", "fornecedor", "frete", "taxa de entrega", "desconto"] },
-  { label: "Movimentações",     href: "/admin/estoque/movimentacoes", keywords: ["movimentação", "transferência", "entrada", "saída", "perda", "ajuste", "baixa"] },
-  { label: "Inventário",        href: "/admin/estoque/inventario", keywords: ["inventário", "contagem", "acuracidade", "balanço"] },
-  { label: "Patrimônio",        href: "/admin/patrimonio", keywords: ["patrimônio", "ativo", "equipamento", "plaqueta"] },
+  { label: "Guarita",           href: "/admin/guarita", keywords: ["guarita", "estacionamento", "porteiro", "placa", "veículo", "carro", "tarifa"], module: "guarita" },
+  { label: "Estoque",           href: "/admin/estoque", keywords: ["estoque", "compras", "produto", "movimentação"], module: "estoque" },
+  { label: "Compras",           href: "/admin/estoque/compras", keywords: ["compra", "nota fiscal", "nf", "fornecedor", "frete", "taxa de entrega", "desconto"], module: "estoque" },
+  { label: "Movimentações",     href: "/admin/estoque/movimentacoes", keywords: ["movimentação", "transferência", "entrada", "saída", "perda", "ajuste", "baixa"], module: "estoque" },
+  { label: "Inventário",        href: "/admin/estoque/inventario", keywords: ["inventário", "contagem", "acuracidade", "balanço"], module: "estoque" },
+  { label: "Patrimônio",        href: "/admin/patrimonio", keywords: ["patrimônio", "ativo", "equipamento", "plaqueta"], module: "estoque" },
   { label: "Apps Mobile",       href: "/admin/mobile-apps", keywords: ["app", "celular", "camareira", "garçom"] },
   { label: "Gastronomia",       href: "/admin/food-and-beverage/menu", keywords: ["cardápio", "menu", "café", "restaurante"] },
   { label: "Garçom / KDS",      href: "/admin/cafe-salao", keywords: ["kds", "cozinha", "salão", "garçom", "café"] },
@@ -213,10 +219,12 @@ function SearchBox({ inline = false, onNavigate }: { inline?: boolean; onNavigat
 
   const results = useMemo(() => {
     if (!query.trim()) return [];
-    const pages = SEARCH_ROUTES.filter(r => matchesQuery(r, query));
+    const pages = SEARCH_ROUTES.filter(r =>
+      (!r.module || isModuleOn(currentProperty?.settings, r.module)) && matchesQuery(r, query)
+    );
     const settings = settingsItems.filter(r => matchesQuery(r, query));
     return [...pages, ...settings].slice(0, 8);
-  }, [query, settingsItems]);
+  }, [query, settingsItems, currentProperty?.settings]);
 
   useEffect(() => { setCursor(0); }, [query]);
 

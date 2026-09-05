@@ -9,10 +9,19 @@
 // arquivo é o outro lado — quem lê a flag.
 //
 // Quem escreve continua sendo `property-settings.ts` (server-only, com merge no
-// banco). Aqui só se lê.
+// banco). Aqui só se lê. Quem APLICA a leitura: `isModuleOn` direto (menu, abas,
+// crons), `requireModule` em `src/lib/api-auth.ts` (rotas → 403 MODULE_OFF) e
+// `<ModuleGuard>` em `src/components/auth/` (páginas → aviso, não redirect).
 
-/** Módulos que podem ser desligados por propriedade. */
-export type ModuleKey = "estoque" | "guarita" | "hsystem" | "ponto" | "rh";
+/**
+ * Módulos que podem ser desligados por propriedade.
+ *
+ * Chave só entra aqui na fatia que a APLICA (regra 5 do doc): chave sem
+ * enforcement é toggle que mente. A taxonomia completa — operacional,
+ * gastronomia/salão, concierge, comercial, eventos, casamentos… — está na seção
+ * 4 do doc e entra uma a uma, cada qual com sua migration de backfill.
+ */
+export type ModuleKey = "estoque" | "guarita" | "hsystem" | "rh" | "ponto";
 
 interface ModuleDef {
   /** Chave em `properties.settings`. */
@@ -20,26 +29,51 @@ interface ModuleDef {
   /**
    * Como o módulo se comporta em propriedade que nunca opinou.
    *
-   * LIGADO para o que já estava em operação quando a flag nasceu — desligar
-   * retroativamente arrancaria o menu de quem usa. DESLIGADO para módulo novo,
-   * que ninguém contratou ainda.
+   * Desde a fatia 1 (04/09/2026) é DESLIGADO para toda chave, e toda chave nova
+   * chega com uma migration que grava o valor explícito nas propriedades que
+   * já existem (regra 6 do doc). O default implícito custou dois defeitos
+   * medidos em produção: `hasStock` LIGADO por default fez a Estância do Vale —
+   * que nunca contratou nada — nascer com o grupo Compras & Estoque no menu; e
+   * `ponto` virar filho de `rh` mataria o Ponto na Fazenda se `hasRH` não
+   * estivesse gravado. O campo continua existindo como rede de segurança para
+   * uma propriedade criada fora do fluxo normal — não como regra de negócio.
    */
   defaultOn: boolean;
   label: string;
+  /**
+   * Feature dentro de um módulo: só liga se o PAI estiver ligado. UM pai só,
+   * de propósito — a árvore termina sempre. A primeira versão desta ideia usava
+   * uma lista `requires` com resolução recursiva e memo compartilhado, e o
+   * diamante `salao → {gastronomia, cafe}` + `cafe → gastronomia` fazia o salão
+   * (a chave do piloto) resolver `false` para sempre. Árvore não tem diamante.
+   */
+  parent?: ModuleKey;
 }
 
 export const MODULES: Record<ModuleKey, ModuleDef> = {
-  estoque: { setting: "hasStock", defaultOn: true, label: "Compras & Estoque" },
+  estoque: { setting: "hasStock", defaultOn: false, label: "Compras & Estoque" },
   guarita: { setting: "hasGuarita", defaultOn: false, label: "Guarita & Estacionamento" },
   hsystem: { setting: "hasHsystem", defaultOn: false, label: "Hsystem (canais)" },
-  ponto: { setting: "hasTimeclock", defaultOn: false, label: "Ponto" },
   // Cobre escala e ausências. NÃO cobre o cadastro de pessoas: toda propriedade
   // tem funcionário, então a aba Pessoas de /admin/rh é core e continua de pé com
   // o módulo desligado. O gate é POR ABA e não na página — `/admin/rh` é a tela
   // inicial de admin e manager (`role-routes.ts`), e um guard de página inteira
   // que redireciona para a home entraria em loop de login.
   rh: { setting: "hasRH", defaultOn: false, label: "Gente (escala e ausências)" },
+  // Decisão do fundador (02/09/2026): RH, ponto e escalas são UM módulo comercial.
+  // `ponto` vira feature de `rh`. Em produção a Fazenda já tem `hasRH: true` e
+  // `hasTimeclock: true`, então nada muda para ela; para as demais o efeito é o
+  // mesmo de antes (desligado). A flag própria continua existindo porque o Ponto
+  // é contratável separadamente dentro do módulo — quem não bate ponto não
+  // precisa ver o botão no topo.
+  ponto: { setting: "hasTimeclock", defaultOn: false, label: "Ponto", parent: "rh" },
 };
+
+/** A flag própria da chave, sem olhar o pai. */
+function ownFlag(settings: unknown, key: ModuleKey): boolean {
+  const value = (settings as Record<string, unknown> | null | undefined)?.[MODULES[key].setting];
+  return typeof value === "boolean" ? value : MODULES[key].defaultOn;
+}
 
 /**
  * O módulo está ligado nesta propriedade?
@@ -47,9 +81,18 @@ export const MODULES: Record<ModuleKey, ModuleDef> = {
  * Aceita o objeto `settings` cru (do `PropertyContext` no browser ou da linha de
  * `properties` no servidor). Valor que não seja booleano — ausente, nulo, texto
  * vindo de migration antiga — cai no default do módulo em vez de virar `false`
- * por acidente.
+ * por acidente. Feature só está ligada se a própria flag E o pai estiverem.
  */
 export function isModuleOn(settings: unknown, key: ModuleKey): boolean {
-  const value = (settings as Record<string, unknown> | null | undefined)?.[MODULES[key].setting];
-  return typeof value === "boolean" ? value : MODULES[key].defaultOn;
+  if (!ownFlag(settings, key)) return false;
+  const parent = MODULES[key].parent;
+  return parent ? isModuleOn(settings, parent) : true;
+}
+
+/**
+ * Filhos diretos de um módulo — para a página de Módulos desligar em cascata e
+ * para o aviso "desligar X também desliga Y".
+ */
+export function childModules(key: ModuleKey): ModuleKey[] {
+  return (Object.keys(MODULES) as ModuleKey[]).filter((k) => MODULES[k].parent === key);
 }

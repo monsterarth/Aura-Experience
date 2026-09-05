@@ -6,9 +6,8 @@
 // POST   → sobe um arquivo. `conferir=1` só simula e devolve o resumo.
 // DELETE → desfaz um import inteiro (`?id=`).
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError, scopedPropertyId } from "@/lib/api-auth";
+import { requireAuth, isAuthError, scopedPropertyId, requireModule } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { isModuleOn } from "@/lib/modules";
 import { AfdImportService } from "@/services/afd-import-service";
 import type { UserRole } from "@/types/aura";
 
@@ -22,18 +21,7 @@ const ROLES: UserRole[] = ["super_admin", "admin", "manager"];
  *  (um dump, um zip renomeado) parar aqui e não no parser. */
 const MAX_BYTES = 8 * 1024 * 1024;
 
-async function pontoOff(propertyId: string) {
-  const { data } = await supabaseAdmin!
-    .from("properties")
-    .select("settings")
-    .eq("id", propertyId)
-    .maybeSingle();
-  if (isModuleOn(data?.settings, "ponto")) return null;
-  return NextResponse.json(
-    { error: "Módulo Ponto desligado nesta propriedade.", code: "MODULE_OFF" },
-    { status: 403 },
-  );
-}
+const pontoOff = (propertyId: string) => requireModule(propertyId, "ponto");
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(ROLES);

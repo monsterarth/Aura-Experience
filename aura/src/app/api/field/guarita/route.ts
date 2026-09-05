@@ -5,7 +5,7 @@
 // lock frio); POST faz as ações — consultar placa, registrar entrada e saída,
 // fechar o turno.
 import { NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, requireModule } from '@/lib/api-auth';
 import { GuaritaService } from '@/services/guarita-service';
 import { UserRole, VehicleKind } from '@/types/aura';
 
@@ -18,14 +18,8 @@ function resolveProperty(auth: any, requested: string | null): string | null {
   return ADMIN_TIER.includes(auth.staff.role) && requested ? requested : auth.staff.propertyId;
 }
 
-/**
- * Módulo desligado responde 403 aqui, não só some do menu — esconder o item e
- * deixar a rota aberta não é modularizar, é maquiar.
- */
-async function moduleOff(propertyId: string) {
-  if (await GuaritaService.isEnabled(propertyId)) return null;
-  return NextResponse.json({ error: 'Módulo Guarita desligado nesta propriedade.', code: 'MODULE_OFF' }, { status: 403 });
-}
+/** Módulo desligado responde 403 aqui, não só some do menu (`requireModule`). */
+const moduleOff = (propertyId: string) => requireModule(propertyId, 'guarita');
 
 export async function GET(req: Request) {
   const auth = await requireAuth(ROLES);

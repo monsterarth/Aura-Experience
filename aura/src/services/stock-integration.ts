@@ -5,6 +5,7 @@
 // entrega ao hóspede nem o lançamento no folio). Sem módulo / sem produto
 // vinculado / sem local de consumo → no-op silencioso.
 import { supabase, supabaseAdmin } from "@/lib/supabase";
+import { isModuleOn } from "@/lib/modules";
 import { StockService } from "./stock-service";
 import { StockReferenceType } from "@/types/aura";
 
@@ -15,11 +16,17 @@ function db(): DB {
 interface Actor { id: string; name: string; }
 
 export const StockIntegration = {
-  /** Módulo de estoque habilitado na propriedade? Default ON; off só se settings.hasStock === false. */
+  /**
+   * Módulo de estoque habilitado na propriedade? A resposta vem do registry
+   * (`src/lib/modules.ts`) — o mesmo que o menu e as rotas leem. Este arquivo
+   * era a cópia manual da regra ("default ON, off só se === false") que
+   * concordava com o registry por coincidência e divergiria no dia em que o
+   * default mudasse. Mudou em 04/09/2026.
+   */
   async isEnabled(propertyId: string): Promise<boolean> {
     try {
       const { data } = await db().from("properties").select("settings").eq("id", propertyId).single();
-      return (data?.settings?.hasStock) !== false;
+      return isModuleOn(data?.settings, "estoque");
     } catch { return false; }
   },
 

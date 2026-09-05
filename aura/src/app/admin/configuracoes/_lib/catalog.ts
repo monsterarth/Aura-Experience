@@ -17,6 +17,7 @@ import {
   Package, Truck, Coffee, ListChecks, type LucideIcon,
 } from "lucide-react";
 import { Property, UserRole } from "@/types/aura";
+import { isModuleOn } from "@/lib/modules";
 
 export interface SettingsEntry {
   id: string;
@@ -53,7 +54,9 @@ const ALL: UserRole[] = [
   "technician", "kitchen", "waiter", "porter", "houseman", "marketing", "compras",
 ];
 
-const hasStock = (p: Property) => (p.settings as { hasStock?: boolean })?.hasStock !== false;
+// A resposta vem do registry, o mesmo que o menu e as rotas leem — aqui era uma
+// cópia manual da regra que só concordava com ele por coincidência.
+const hasStock = (p: Property) => isModuleOn(p.settings, "estoque");
 
 export const SETTINGS_DOMAINS: SettingsDomain[] = [
   {

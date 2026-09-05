@@ -9,9 +9,8 @@
 // modularizar, é maquiar; mas fechar a rota inteira tiraria o cadastro de equipe
 // de quem não contratou escala.
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError, scopedPropertyId } from "@/lib/api-auth";
+import { requireAuth, isAuthError, scopedPropertyId, requireModule } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { isModuleOn } from "@/lib/modules";
 import { HRService, patternLabel } from "@/services/hr-service";
 import { daysOfMonth } from "@/lib/schedule-engine";
 import type { UserRole } from "@/types/aura";
@@ -27,18 +26,7 @@ const READ_ROLES: UserRole[] = ["super_admin", "admin", "manager", "governance",
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-async function rhOff(propertyId: string) {
-  const { data } = await supabaseAdmin!
-    .from("properties")
-    .select("settings")
-    .eq("id", propertyId)
-    .maybeSingle();
-  if (isModuleOn(data?.settings, "rh")) return null;
-  return NextResponse.json(
-    { error: "Módulo Gente desligado nesta propriedade.", code: "MODULE_OFF" },
-    { status: 403 },
-  );
-}
+const rhOff = (propertyId: string) => requireModule(propertyId, "rh");
 
 function badMonth(month: string | null): month is null {
   return !month || !MONTH_RE.test(month);

@@ -5,6 +5,7 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { isModuleOn, MODULES, type ModuleKey } from '@/lib/modules';
 import { UserRole } from '@/types/aura';
 
 export interface AuthResult {
@@ -181,6 +182,40 @@ export function scopedPropertyId(
 ): string | null {
     const canCross = hasRole(auth.staff.role, auth.staff.secondaryRoles, crossTenantRoles);
     return (canCross && requested) ? requested : auth.staff.propertyId;
+}
+
+/**
+ * Módulo desligado nesta propriedade → 403 com `code: 'MODULE_OFF'`; ligado → null.
+ *
+ * Camada 1 do enforcement (`docs/MODULARIZATION.md` §7), e a que vem ANTES do
+ * menu: esconder o item e deixar a rota aberta não é modularizar, é maquiar. O
+ * default de cada chave mora em `src/lib/modules.ts` — o mesmo que o menu lê —
+ * senão o módulo some do menu e continua atendendo pela API.
+ *
+ * Extraído do que já rodava em produção em `api/admin/guarita`, `api/field/guarita`,
+ * `api/admin/rh` e `api/admin/rh/afd`, cada um com sua cópia. Uso, depois do
+ * `requireAuth` e de resolver o propertyId:
+ *
+ *   const off = await requireModule(propertyId, 'guarita');
+ *   if (off) return off;
+ *
+ * Propriedade inexistente cai em 403 também — uma propriedade que não existe
+ * não tem módulo nenhum ligado.
+ */
+export async function requireModule(propertyId: string, key: ModuleKey): Promise<NextResponse | null> {
+    if (!supabaseAdmin) {
+        return NextResponse.json({ error: 'Erro de configuração do servidor.' }, { status: 500 });
+    }
+    const { data } = await supabaseAdmin
+        .from('properties')
+        .select('settings')
+        .eq('id', propertyId)
+        .maybeSingle();
+    if (isModuleOn(data?.settings, key)) return null;
+    return NextResponse.json(
+        { error: `Módulo ${MODULES[key].label} desligado nesta propriedade.`, code: 'MODULE_OFF' },
+        { status: 403 }
+    );
 }
 
 /**

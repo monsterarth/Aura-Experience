@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarRange, Car, CircleDollarSign, Receipt, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { RoleGuard } from "@/components/auth/RoleGuard";
+import { ModuleGuard } from "@/components/auth/ModuleGuard";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import {
@@ -41,7 +42,9 @@ const br = (d: string) => (d ? d.split("-").reverse().join("/") : "—");
 export default function GuaritaAdminPage() {
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "manager", "reception"]}>
-      <GuaritaAdminInner />
+      <ModuleGuard module="guarita">
+        <GuaritaAdminInner />
+      </ModuleGuard>
     </RoleGuard>
   );
 }

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { useProperty } from "@/context/PropertyContext";
 import { fbService } from "@/services/fb-service";
 import { StockClient } from "@/lib/stock-client";
+import { isModuleOn } from "@/lib/modules";
 import type { FBCategory, FBMenuItem, FBIngredient, FBFlavor } from "@/types/aura";
 import { useConfigDeepLink } from "@/lib/settings-deeplink";
 import { useConfirm } from "@/components/aura";
@@ -56,7 +57,7 @@ export function useMenu() {
   const [lang, setLang] = useState<Lang>("pt");
 
   // Estoque: produtos para vincular na ficha técnica (só se o módulo estiver ligado)
-  const stockEnabled = currentProperty?.settings?.hasStock !== false;
+  const stockEnabled = isModuleOn(currentProperty?.settings, "estoque");
   const [stockProducts, setStockProducts] = useState<{ id: string; name: string; unit: string }[]>([]);
   useEffect(() => {
     if (!currentProperty?.id || !stockEnabled) { setStockProducts([]); return; }

@@ -45,18 +45,8 @@ const KIND_LABEL: Record<VehicleKind, string> = {
 };
 
 export const GuaritaService = {
-  // ── Contexto ───────────────────────────────────────────────────────────────
-
-  /**
-   * O módulo está contratado nesta propriedade?
-   *
-   * O default mora em `src/lib/modules.ts`, o mesmo que o menu lê — senão a
-   * Guarita some do menu e continua atendendo pela API.
-   */
-  async isEnabled(propertyId: string): Promise<boolean> {
-    const { data } = await db().from("properties").select("settings").eq("id", propertyId).maybeSingle();
-    return isModuleOn(data?.settings, "guarita");
-  },
+  // O gate de módulo das rotas saiu daqui para `requireModule` (src/lib/api-auth.ts)
+  // em 04/09/2026 — era a cópia que as outras rotas copiaram.
 
   // ── Tarifa do dia ──────────────────────────────────────────────────────────
 

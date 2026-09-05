@@ -66,6 +66,8 @@ type SubItem = {
   label: string;
   href: string;
   roles: string[];
+  /** Filho de módulo desligável — some junto com o módulo. */
+  module?: ModuleKey;
 };
 
 type NavItem = {
@@ -87,6 +89,8 @@ type NavGroup = {
   id: string;
   label: string | null;
   collapsible?: boolean;
+  /** Grupo inteiro de um módulo desligável — some com o módulo, itens e tudo. */
+  module?: ModuleKey;
   items: NavItem[];
 };
 
@@ -100,7 +104,7 @@ const PAINEL_CHILDREN: SubItem[] = [
   { id: "painel_kds",        label: "Cozinha/KDS", href: "/admin/cafe-salao/kds",       roles: ["super_admin", "admin"] },
   { id: "painel_aval",       label: "Avaliações",  href: "/admin/surveys/responses",    roles: ["super_admin", "admin", "manager"] },
   { id: "painel_gerencia",   label: "Gerência",    href: "/admin/hr",                   roles: ["super_admin", "admin", "manager"] },
-  { id: "painel_estoque",    label: "Estoque",     href: "/admin/estoque",              roles: ["super_admin", "admin", "manager", "compras"] },
+  { id: "painel_estoque",    label: "Estoque",     href: "/admin/estoque",              roles: ["super_admin", "admin", "manager", "compras"], module: "estoque" },
 ];
 
 // ─── Nav groups ───────────────────────────────────────────────────────────────
@@ -194,6 +198,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: "estoque_grupo",
     label: "Compras & Estoque",
     collapsible: true,
+    module: "estoque",
     items: [
       { id: "estoque_produtos", label: "Produtos",       icon: Package,           href: "/admin/estoque/produtos",       roles: ["super_admin","admin","manager","compras"] },
       { id: "estoque_locais",   label: "Estoques",       icon: Warehouse,         href: "/admin/estoque/locais",         roles: ["super_admin","admin","manager","compras"] },
@@ -231,13 +236,14 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Setup",
     collapsible: true,
     items: [
-      { id: "estoque_config", label: "Config. Estoque", icon: SlidersHorizontal, href: "/admin/estoque/configuracoes",        roles: ["super_admin","admin","manager","compras"] },
+      { id: "estoque_config", label: "Config. Estoque", icon: SlidersHorizontal, href: "/admin/estoque/configuracoes",        roles: ["super_admin","admin","manager","compras"], module: "estoque" },
       { id: "gastro_main", label: "Gastronomia",      icon: Coffee,        href: "/admin/food-and-beverage/menu",           roles: ["super_admin","admin","kitchen","manager"] },
       { id: "cafe",        label: "Café Salão (KDS)", icon: Phone,         href: "/admin/cafe-salao",                       roles: ["super_admin","admin","kitchen","manager"] },
       { id: "equipe",      label: "Equipe",            icon: Users,         href: "/admin/staff",                            roles: ["super_admin","admin","manager"] },
       { id: "nps",         label: "Pesquisas (NPS)",   icon: ClipboardList, href: "/admin/surveys",                          roles: ["super_admin","admin","manager"] },
       { id: "automacoes",  label: "Automações",        icon: Bot,           href: "/admin/comunicacao/automations/settings", roles: ["super_admin","admin"] },
-      { id: "hsystem",     label: "Hsystem",           icon: Plug,          href: "/admin/hsystem",                          roles: ["super_admin","admin","manager"] },
+      // Liga/desliga em Configurações → Módulos (super_admin); a página só configura.
+      { id: "hsystem",     label: "Hsystem",           icon: Plug,          href: "/admin/hsystem",                          roles: ["super_admin","admin","manager"], module: "hsystem" },
       // Levava para a lista multi-tenant, não para a configuração da pousada — e a tela
       // real de configuração não era alcançável pelo menu. Agora aponta para o hub.
       { id: "config",      label: "Configurações",     icon: Settings,      href: "/admin/configuracoes",                    roles: ["super_admin","admin","manager","reception","kitchen","compras","governance"], requireProperty: true },
@@ -396,10 +402,12 @@ function NavItemRow({
 
 // ─── PainelNavItem — item com dropdown expansível ─────────────────────────────
 function PainelNavItem({
-  item, role, pathname, collapsed, badgeCount, onClick, TT = T,
+  item, role, settings, pathname, collapsed, badgeCount, onClick, TT = T,
 }: {
   item: NavItem;
   role: string | null | undefined;
+  /** `settings` da propriedade ativa — para o filho de módulo desligado sumir do dropdown. */
+  settings: unknown;
   pathname: string;
   collapsed: boolean;
   badgeCount?: number | null;
@@ -408,8 +416,11 @@ function PainelNavItem({
 }) {
   const [open, setOpen] = useState(false);
 
+  // Módulo antes do atalho de super_admin — mesma ordem do canSee, pelo mesmo
+  // motivo: quem contrata liga em Configurações → Módulos, não achando o item.
   const visibleChildren = (item.children ?? []).filter(c =>
-    role === "super_admin" || c.roles.includes(role ?? "")
+    (!c.module || isModuleOn(settings, c.module)) &&
+    (role === "super_admin" || c.roles.includes(role ?? ""))
   );
   const hasDropdown = !collapsed && visibleChildren.length > 1;
 
@@ -783,8 +794,9 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
           scrollbarColor: `${TT.border} transparent`,
         }}>
           {NAV_GROUPS.map((group) => {
-            // Módulo Compras & Estoque desligado para a propriedade (SaaS): esconde o grupo.
-            if (group.id === "estoque_grupo" && !isModuleOn(property?.settings, "estoque")) return null;
+            // Grupo de módulo desligado some inteiro — era um `if` pelo id do grupo
+            // de estoque; agora é o campo `module`, o mesmo do item e do filho.
+            if (group.module && !isModuleOn(property?.settings, group.module)) return null;
             const visibleItems = group.items.filter(canSee);
             if (visibleItems.length === 0) return null;
             const isCollapsible = !!group.collapsible;
@@ -827,6 +839,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
                             key={item.id}
                             item={item}
                             role={role}
+                            settings={property?.settings}
                             pathname={pathname}
                             collapsed={collapsed}
                             badgeCount={badgeFor[item.id]}

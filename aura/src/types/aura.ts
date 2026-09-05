@@ -76,7 +76,15 @@ export interface Property {
   settings: {
     hasBreakfast: boolean;
     hasKDS: boolean;
-    hasStock?: boolean;          // módulo Compras & Estoque (default: habilitado; off só se === false)
+    // Flags de módulo — leitura SÓ por `isModuleOn` (src/lib/modules.ts), que
+    // resolve default e pai. Ausente = desligado; toda propriedade existente
+    // tem o valor explícito (migrations/modules_backfill_flags.sql).
+    hasStock?: boolean;          // Compras & Estoque (+ patrimônio)
+    hasGuarita?: boolean;        // Guarita & Estacionamento
+    hasHsystem?: boolean;        // Hsystem (canais)
+    hasRH?: boolean;             // Gente — escala e ausências
+    hasTimeclock?: boolean;      // Ponto (feature de Gente)
+    hasWeddingSite?: boolean;    // site dos noivos — lido à mão em wedding-site-service até a chave `casamentos` nascer
     checkInTime?: string;        // horário padrão de check-in (HH:MM) — política da propriedade, default ao criar estadias
     checkOutTime?: string;       // horário padrão de check-out (HH:MM)
     weddingLead?: WeddingLeadSettings;  // prazos padrão das negociações de casamento

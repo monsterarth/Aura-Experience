@@ -4,7 +4,7 @@
 // (o número que substitui a reserva-fantasma no HMAX), histórico de turnos e
 // gestão do cadastro de placas.
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError, scopedPropertyId } from "@/lib/api-auth";
+import { requireAuth, isAuthError, scopedPropertyId, requireModule } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { GuaritaService, todayBrt } from "@/services/guarita-service";
 import { UserRole, VehicleStatus } from "@/types/aura";
@@ -14,14 +14,8 @@ export const dynamic = "force-dynamic";
 const READ_ROLES: UserRole[] = ["super_admin", "admin", "manager", "reception"];
 const WRITE_ROLES: UserRole[] = ["super_admin", "admin", "manager", "reception"];
 
-/**
- * Módulo desligado responde 403 aqui, não só some do menu — esconder o item e
- * deixar a rota aberta não é modularizar, é maquiar.
- */
-async function moduleOff(propertyId: string) {
-  if (await GuaritaService.isEnabled(propertyId)) return null;
-  return NextResponse.json({ error: "Módulo Guarita desligado nesta propriedade.", code: "MODULE_OFF" }, { status: 403 });
-}
+/** Módulo desligado responde 403 aqui, não só some do menu (`requireModule`). */
+const moduleOff = (propertyId: string) => requireModule(propertyId, "guarita");
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(READ_ROLES);

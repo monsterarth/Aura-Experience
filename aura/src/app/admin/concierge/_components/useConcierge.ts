@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ConciergeService } from "@/services/concierge-service";
 import { StockClient } from "@/lib/stock-client";
 import { splitLocations } from "@/lib/stock-locations";
+import { isModuleOn } from "@/lib/modules";
 import { useConfirm } from "@/components/aura";
 import type { ConciergeRequest, ConciergeItem, ConciergeGroup } from "@/types/aura";
 import { defaultForm, defaultGroupForm, getUrgency, type EnrichedRequest, type GroupForm, type ItemForm, type RequestAction, type Tab } from "./concierge-utils";
@@ -40,7 +41,7 @@ export function useConcierge(tab: Tab) {
   const [saving, setSaving] = useState(false);
   const [stockProducts, setStockProducts] = useState<{ id: string; name: string; unit: string }[]>([]);
   const [stockLocations, setStockLocations] = useState<{ id: string; name: string }[]>([]);
-  const stockEnabled = property?.settings?.hasStock !== false;
+  const stockEnabled = isModuleOn(property?.settings, "estoque");
 
   // ── Arquivo ──
   const [archivedItems, setArchivedItems] = useState<ConciergeItem[]>([]);
