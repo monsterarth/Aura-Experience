@@ -45,6 +45,10 @@ export default function StructureBookingsPage() {
             : [{ unitId: undefined as string | undefined, unitName: structure.name, imageUrl: structure.imageUrl }];
           const releasedToday = structure.releasedForDate === dateStr;
           const structBookings = bk.bookings.filter(b => b.structureId === structure.id);
+          // Estrutura INTEIRA fora de operação. Só faz sentido oferecer para quem não tem
+          // unidades: com unidades, o gesto é por unidade (uma jacuzzi quebrada não tira
+          // a outra do ar). Persiste até alguém devolver — não reseta à meia-noite.
+          const structDown = structure.outOfService?.status === "maintenance";
 
           return (
             <Card key={structure.id} pad={0} style={{ overflow: "hidden" }}>
@@ -58,12 +62,34 @@ export default function StructureBookingsPage() {
                     </p>
                   </div>
                 </div>
-                {structure.requiresDailyRelease && (
-                  releasedToday
-                    ? <Button variant="soft" tone="green" size="sm" icon={Unlock} onClick={() => bk.handleToggleRelease(structure, false)} title="Clique para bloquear novamente">Liberada para uso</Button>
-                    : <Button variant="soft" tone="orange" size="sm" icon={Lock} onClick={() => bk.handleToggleRelease(structure, true)} title="Bloqueada até a recepção liberar">Liberar para uso</Button>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {structure.requiresDailyRelease && !structDown && (
+                    releasedToday
+                      ? <Button variant="soft" tone="green" size="sm" icon={Unlock} onClick={() => bk.handleToggleRelease(structure, false)} title="Clique para bloquear novamente">Liberada para uso</Button>
+                      : <Button variant="soft" tone="orange" size="sm" icon={Lock} onClick={() => bk.handleToggleRelease(structure, true)} title="Bloqueada até a recepção liberar">Liberar para uso</Button>
+                  )}
+                  {!hasUnits && (
+                    structDown
+                      ? <Button variant="soft" tone="green" size="sm" icon={RotateCcw} onClick={() => bk.restoreUnit(structure, null, structure.name)}>Voltar a operar</Button>
+                      : <Button variant="ghost" tone="red" size="sm" icon={Wrench} onClick={() => bk.openUnitMaintenance(structure, null, structure.name)}>Tirar de operação</Button>
+                  )}
+                </div>
               </div>
+
+              {structDown && (
+                <div style={{ margin: 16, display: "flex", gap: 10, alignItems: "flex-start", padding: 14, borderRadius: 14, border: `1px solid ${T.redBorder}`, background: T.redBg }}>
+                  <Wrench size={16} color={T.red} style={{ marginTop: 2, flexShrink: 0 }} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: T.text }}>{structure.outOfService?.note || "Sem motivo registrado."}</div>
+                    <p style={{ margin: "3px 0 0", fontSize: 11, color: T.muted }}>
+                      {[structure.outOfService?.since ? `Desde ${format(new Date(structure.outOfService.since), "dd/MM", { locale: ptBR })}` : null, structure.outOfService?.byName].filter(Boolean).join(" · ")}
+                    </p>
+                    <p style={{ margin: "8px 0 0", fontSize: 11.5, color: T.muted, lineHeight: 1.45 }}>
+                      A área inteira some do portal do hóspede e vale até alguém devolver à operação — não precisa bloquear horário por horário todo dia.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div>
                 {items.map((item, idx) => {
@@ -108,7 +134,7 @@ export default function StructureBookingsPage() {
                             </p>
                           </div>
                         </div>
-                      ) : structure.bookingType === "free_time" ? (
+                      ) : structDown ? null : structure.bookingType === "free_time" ? (
                         <Button variant="outline" icon={Plus} onClick={() => bk.openCreate(structure.id, item.unitId, true)} style={{ alignSelf: "flex-start" }}>Nova reserva manual</Button>
                       ) : (
                         <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-2">
@@ -146,7 +172,7 @@ export default function StructureBookingsPage() {
                             const isBlock = b.type === "maintenance_block";
                             // Em fixed_slots o cancelamento sai do próprio slot — mas a grade some quando a
                             // unidade está fora de operação, então o que já estava marcado ficaria sem saída.
-                            const canCancel = (structure.bookingType === "free_time" || !!unitMaint) && (b.status === "approved" || isBlock);
+                            const canCancel = (structure.bookingType === "free_time" || !!unitMaint || structDown) && (b.status === "approved" || isBlock);
                             return (
                               <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: `1px solid ${isBlock ? T.redBorder : T.border}`, background: isBlock ? T.redBg : T.glass }}>
                                 <Pill tone={isBlock ? "red" : STATUS_TONE[b.status] ?? "neutral"} label={isBlock ? "Manutenção" : STATUS_LABEL[b.status] ?? b.status} />

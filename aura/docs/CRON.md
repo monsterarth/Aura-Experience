@@ -24,6 +24,7 @@ Schedules in `vercel.json` are **UTC**. The resort runs on BRT (UTC−3), so e.g
 | `daily-lodging` | `15 8 * * *` | Posts due nightly lodging charges (diárias) to stay folios |
 | `wedding-status` | `30 8 * * *` | Past **confirmed** → `completed`; past **tentative** → `lost` |
 | `crm-status` | `45 8 * * *` | Archives stale reservation quotes (`rate_quotes`) as `lost` |
+| `structure-release` | `*/15 9-16 * * *` | Pushes the front desk when a daily-release area is still locked 30 min before it opens |
 
 ### `daily-automations`
 For each property: loads active `automation_rules` (those with a `templateId`) and
@@ -90,6 +91,25 @@ via `RateService.archiveExpiredQuotes`:
 Each archived quote also gets a `lost` row in `crm_interactions` (actor `cron`). Quote lead
 defaults live in `properties.settings.crmQuoteLead` (3/30/30); "Registrar follow-up" renews.
 **Writes to** `rate_quotes.status/lostReason/lostAt`, `crm_interactions`, `audit_logs`.
+
+### `structure-release`
+Runs every 15 min from 09:00 to 16:59 UTC (06:00–13:59 BRT). Sends **one push per area, per
+day** to `reception` + `manager` when a `requiresDailyRelease` structure is still locked
+`RELEASE_WARN_LEAD_MINUTES` (30) before its `operatingHours.openTime`. Level comes from
+`releaseAlertLevel` in `src/lib/structure-release.ts` — the same rule the bell reads, so push
+and panel never disagree. Areas fully out of service (`outOfService`, or every unit in
+`unitStatus`) are skipped: there is nothing to release.
+
+Why it exists (measured 06/06→05/09/2026): **43 of 92 days** had guests on site and the jacuzzi
+was never released — none of them for maintenance — and all 14 guest bookings of the period
+landed on released days. A forgotten release leaves no trace: the area simply does not exist in
+the portal, so nobody asks. Of the 42 releases that did happen, 30 (71%) were already done
+before the T-30 mark, so on a good day this cron says nothing.
+
+Dedupe is `structures."releaseAlertSentFor"` (YYYY-MM-DD), written **after** the send so a
+failed push retries on the next run. An area opening outside the 06:00–13:59 window still
+shows in the bell but gets no push — widen the schedule if that ever happens.
+**Writes to** `structures."releaseAlertSentFor"`, `audit_logs` (`STRUCTURE_RELEASE_ALERT`).
 
 ### `daily-lodging`
 Runs at 08:15 UTC (05:15 BRT). For every stay with `nightlyRate` set (linked from a Tarifário

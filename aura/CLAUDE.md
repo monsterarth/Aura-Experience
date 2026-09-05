@@ -98,9 +98,11 @@ Scheduled in `vercel.json` (UTC):
 | `breakfast-attendance` | `0 8 * * *` | 08:00 daily |
 | `stock-expiry` | `0 9 * * *` | 09:00 daily |
 | `asset-depreciation` | `0 5 1 * *` | 05:00 on the 1st |
+| `rh-materialize` | `0 6 * * *` | 06:00 daily (gera a escala do mês corrente e dos dois seguintes) |
 | `daily-lodging` | `15 8 * * *` | 08:15 daily (lança diárias vencidas no fólio) |
 | `wedding-status` | `30 8 * * *` | 08:30 daily (casamento confirmado que passou → realizado) |
 | `crm-status` | `45 8 * * *` | 08:45 daily (orçamento com prazo/data vencidos → perdido) |
+| `structure-release` | `*/15 9-16 * * *` | a cada 15 min, 06:00–13:59 BRT (push à recepção quando área de liberação diária segue fechada 30 min antes de abrir) |
 
 Other cron-style routes exist in code but are **not** in `vercel.json` (triggered manually/externally): `process-messages`, `whatsapp-watchdog`, `housekeeping-routines`, `hsystem-sync` (polling do HUNIT — cron externo a cada 1–5 min; ver módulo Hsystem abaixo). All cron routes check the `CRON_SECRET` header in production. Details in `docs/CRON.md`.
 
@@ -203,6 +205,20 @@ Deeper docs live in `docs/`, read on demand:
   serve ao faturamento — não há emissão fiscal envolvida).
 - `docs/FISCAL.md` — plano da emissão fiscal própria (NFS-e + NFC-e via API terceirizada), o último
   pré-requisito para largar o HMAX. Não iniciado; traz as perguntas que dependem da contabilidade.
+- `docs/PET-POLICY.md` — plano da política Pet em duas camadas (base + PET EXCEÇÃO), com os textos
+  propostos em anexo. Não iniciado; a fatia 0 é a aprovação dos textos pela direção. Traz a medição
+  de 02/09/2026: só 2 estadias com 2 pets em 473, e o `petFee` vivendo só na cotação (0 das 97
+  cotações do ano declarou pet — todo pet aparece no pré-check-in). **A taxa é cobrada no HMAX**,
+  que segue sendo a fonte da verdade do fólio; o que nunca foi aplicado são as multas e a recusa
+  de entrada. O aceite da política no pré-check-in também não é gravado.
+- `docs/HR-V2.md` — RH v2: escala, ponto, ausências e ficha. **Fatias 0 e 1 EXECUTADAS no DEV em
+  03/09/2026** (branch `rh-v2`, não subiu para o `main`). O módulo de escalas antigo **nunca foi
+  adotado** — 30 registros somando as três tabelas, parados desde maio/junho. O modelo novo tem
+  três camadas (padrão versionado em linhas → ausência com período → dia materializado) e **não
+  tem coluna `scheduleType`**: `6x1` é regra semanal mais uma regra periódica, só `12x36` é ciclo.
+  O motor (`src/lib/schedule-engine.ts`) foi provado igual ao antigo em 6.935 dias-pessoa. Traz o
+  que falta da fatia 0 (operação: contas de teste, datas de admissão, 4 jornadas a cadastrar) e a
+  ordem de subida para produção.
 - `docs/HOUSEKEEPING-V2.md` — estudo do motor de faxinas, com medição de produção (01/09/2026):
   56% das tarefas são criadas à mão e **metade das automáticas de `daily`/vistoria é cancelada**.
   Traz a ideia de o motor SUGERIR em vez de criar, o gatilho `fixed_interval_days` que nunca rodou

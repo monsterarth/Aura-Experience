@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "@/services/audit-service";
-import { isUnitInMaintenance } from "@/services/structure-service";
+import { isStructureOutOfService, isUnitInMaintenance } from "@/lib/structure-release";
 
 export async function DELETE(request: NextRequest) {
     try {
@@ -147,21 +147,41 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Duas travas distintas na mesma leitura da estrutura:
+        // Três travas distintas na mesma leitura da estrutura:
         //  • Liberação diária — estruturas marcadas (ex: jacuzzi) ficam bloqueadas para o
         //    hóspede até a recepção liberar para a data (releasedForDate === data da reserva).
-        //  • Unidade fora de operação — persistente, por unidade, até alguém devolver.
-        // Ambas valem só para o portal do hóspede; a recepção continua podendo lançar.
+        //  • Estrutura inteira fora de operação — persistente, até alguém devolver.
+        //  • Unidade fora de operação — o mesmo, um nível abaixo.
+        // Todas valem só para o portal do hóspede; a recepção continua podendo lançar.
         if (booking.structureId && booking.date) {
-            const { data: structRelease } = await supabaseAdmin
+            const { data: structRelease, error: structError } = await supabaseAdmin
                 .from('structures')
-                .select('requiresDailyRelease, releasedForDate, unitStatus')
+                .select('requiresDailyRelease, releasedForDate, unitStatus, outOfService')
                 .eq('id', booking.structureId)
                 .single();
+
+            // Leitura falhou (coluna ausente antes da migration, RLS, rede): NEGA.
+            // Sem isto o erro vira `data: null`, todo teste abaixo é `undefined` e as
+            // três travas somem em silêncio — o hóspede reserva a jacuzzi que ninguém
+            // preparou. É o modo de falha que `add_unit_status.sql` já tinha avisado.
+            if (structError || !structRelease) {
+                console.error('[guest/structure-bookings] estrutura ilegível:', booking.structureId, structError?.message);
+                return NextResponse.json(
+                    { error: "Não foi possível confirmar a disponibilidade desta área. Fale com a recepção." },
+                    { status: 503 }
+                );
+            }
 
             if (structRelease?.requiresDailyRelease && structRelease.releasedForDate !== booking.date) {
                 return NextResponse.json(
                     { error: "Esta área ainda não foi liberada pela recepção hoje. Fale com a recepção para reservar." },
+                    { status: 409 }
+                );
+            }
+
+            if (isStructureOutOfService(structRelease ?? {})) {
+                return NextResponse.json(
+                    { error: "Esta área está fora de operação. Fale com a recepção." },
                     { status: 409 }
                 );
             }

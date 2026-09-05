@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { Loader2, Clock, CheckCircle2, Info, Lock, Wrench } from "lucide-react";
 import { toast } from "sonner";
-import { StructureService, isUnitInMaintenance } from "@/services/structure-service";
+import { StructureService } from "@/services/structure-service";
+import { isAwaitingRelease, isFullyOutOfService, isUnitInMaintenance } from "@/lib/structure-release";
 import { Stay, Property, TimeSlot, StructureBooking } from "@/types/aura";
 import { MapArea, MapLang } from "./types";
 import { localizedName } from "./utils/localize";
@@ -63,14 +64,15 @@ export function BookingPanel({ area, stay, property, lang, onBooked }: BookingPa
     const today = new Date().toISOString().split("T")[0];
 
     // Liberação diária: bloqueada para o hóspede até a recepção liberar para hoje.
-    const awaitingRelease = !!area.requiresDailyRelease && area.releasedForDate !== today;
+    const awaitingRelease = isAwaitingRelease(area, today);
 
-    // Unidades fora de operação (ex: uma das duas jacuzzis quebrada). Estado persistente,
-    // independente da liberação do dia: a unidade aparece no seletor, porém desabilitada.
+    // Fora de operação (ex: uma das duas jacuzzis quebrada, ou o quiosque inteiro).
+    // Estado persistente, independente da liberação do dia: a unidade aparece no
+    // seletor, porém desabilitada; a estrutura inteira fora fecha o painel.
     const units = area.units ?? [];
     const downUnits = units.filter(u => isUnitInMaintenance(area.unitStatus, u.id));
     const openUnits = units.filter(u => !isUnitInMaintenance(area.unitStatus, u.id));
-    const allUnitsDown = units.length > 0 && openUnits.length === 0;
+    const allUnitsDown = isFullyOutOfService(area);
 
     const [slots, setSlots] = useState<TimeSlot[]>([]);
     const [loading, setLoading] = useState(true);
@@ -176,6 +178,10 @@ export function BookingPanel({ area, stay, property, lang, onBooked }: BookingPa
                 </div>
                 <h3 className="text-base font-black text-foreground">{t.maintTitle}</h3>
                 <p className="text-sm text-muted-foreground mt-1.5 max-w-xs">{t.maintDesc}</p>
+                {/* Mesma escolha de 30/08: o hóspede vê o motivo, não some sem explicação. */}
+                {area.outOfService?.note && (
+                    <p className="text-[13px] font-semibold text-foreground/80 mt-2 max-w-xs">{area.outOfService.note}</p>
+                )}
             </div>
         );
     }

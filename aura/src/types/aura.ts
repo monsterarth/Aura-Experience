@@ -319,6 +319,12 @@ export interface Structure {
   // conta como disponível — só a que saiu de operação ganha chave. Persiste até alguém
   // devolver à operação (não reseta à meia-noite, ao contrário de releasedForDate).
   unitStatus?: Record<string, StructureUnitState>;
+  // O mesmo estado, para a estrutura INTEIRA. É o caminho de quem não tem unidades
+  // cadastradas (quiosque, salão, sala de massagem): sem unidade não há chave em
+  // `unitStatus`, e a única saída era relançar bloqueio manual todo dia — a rotina
+  // que o estado persistente da unidade matou em 30/08/2026.
+  // Não confundir com `status`, que é legado e ninguém lê.
+  outOfService?: StructureUnitState;
   bookingType: 'fixed_slots' | 'free_time';
   requiresTurnover: boolean; // Does it require housekeeping after use?
   // Liberação diária: estrutura fica bloqueada por padrão a cada dia (ex: jacuzzi que
@@ -326,6 +332,9 @@ export interface Structure {
   // releasedForDate === data de hoje — reseta sozinha à meia-noite, sem cron.
   requiresDailyRelease?: boolean;
   releasedForDate?: string; // YYYY-MM-DD para a qual a recepção liberou o uso
+  // Último dia (YYYY-MM-DD) em que o cron já mandou o push de "área ainda fechada".
+  // Trava de repetição: sem isto o cron avisaria de novo a cada rodada até liberarem.
+  releaseAlertSentFor?: string;
   housekeepingChecklist?: { id: string; label: string }[];
   messageTemplatePendingId?: string;
   messageTemplateConfirmedId?: string;
@@ -341,8 +350,10 @@ export interface Structure {
   createdAt?: Timestamp;
 }
 
-// Uma unidade fora de operação (ex: jacuzzi com a bomba queimada). Diferente da liberação
-// diária: aquela é preparo do dia e volta a bloquear sozinha; esta vale até ser revogada.
+// Algo fora de operação (ex: jacuzzi com a bomba queimada). Serve aos dois níveis:
+// uma unidade dentro de `unitStatus` ou a estrutura inteira em `outOfService`.
+// Diferente da liberação diária: aquela é preparo do dia e volta a bloquear sozinha;
+// esta vale até ser revogada.
 export interface StructureUnitState {
   status: 'maintenance';
   note?: string;      // motivo, mostrado ao staff e (resumido) ao hóspede
@@ -1027,6 +1038,8 @@ export interface AuditLog {
   | 'STRUCTURE_CREATED' | 'STRUCTURE_UPDATED' | 'STRUCTURE_DELETED'
   | 'STRUCTURE_RELEASED' | 'STRUCTURE_BLOCKED'
   | 'STRUCTURE_UNIT_MAINTENANCE' | 'STRUCTURE_UNIT_RESTORED'
+  | 'STRUCTURE_OUT_OF_SERVICE' | 'STRUCTURE_RESTORED'
+  | 'STRUCTURE_RELEASE_ALERT'
   | 'STRUCTURE_BOOKING_CREATED' | 'STRUCTURE_BOOKING_STATUS_CHANGED'
   | 'EVENT_CREATED' | 'EVENT_UPDATED' | 'EVENT_DELETED' | 'EVENT_PUBLISHED'
   | 'CONCIERGE_REQUESTED' | 'CONCIERGE_DELIVERED' | 'CONCIERGE_RETURNED' | 'CONCIERGE_LOST'

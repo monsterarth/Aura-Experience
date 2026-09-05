@@ -6,7 +6,7 @@ import { Dialog } from "@/components/aura/Dialog";
 import { useIsMobile, useMounted } from "@/components/aura/hooks";
 import { useOverlayRoot } from "@/components/aura/OverlayProvider";
 import { useRouter, usePathname } from "next/navigation";
-import { Bell, MessageSquare, ShoppingBag, Calendar, X, ChevronRight, Dog } from "lucide-react";
+import { Bell, MessageSquare, ShoppingBag, Calendar, X, ChevronRight, Dog, Lock, Unlock } from "lucide-react";
 import { PetExceptionDialog, type PetExceptionItem } from "@/components/admin/PetExceptionDialog";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { useProperty } from "@/context/PropertyContext";
@@ -18,6 +18,10 @@ import {
   NOTIFICATION_VISIBLE_ROLES, NOTIFICATION_ALERT_ROLES, hasAnyRole,
   URGENT_REMIND_MS, URGENT_SUPPRESS_MS, URGENT_SUPPRESS_KEY,
 } from "@/lib/notifications";
+import {
+  hhmmToMinutes, nowInProperty, releaseAlertLevel, type ReleaseAlertLevel,
+} from "@/lib/structure-release";
+import type { Structure } from "@/types/aura";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -43,6 +47,25 @@ interface ConciergeNotif {
   createdAt: string;
   /** Só pedido do HÓSPEDE vai para o card que incomoda; o da camareira segue no sino. */
   requestedBy?: 'guest' | 'maid';
+}
+
+/**
+ * Área de liberação diária que ainda não foi liberada hoje.
+ *
+ * Não vem de tabela de notificação — é derivada do próprio `releasedForDate`,
+ * como concierge e agendamentos. Consequência de graça: existe enquanto ninguém
+ * liberar e some no instante do clique, sem cron para criar nem linha órfã para
+ * limpar.
+ */
+interface ClosedAreaNotif {
+  id: string;
+  name: string;
+  openTime?: string;
+  closeTime?: string;
+  /** Nível recalculado a cada tique do relógio — 'warn' no sino, 'urgent' no card. */
+  level: ReleaseAlertLevel;
+  /** Minutos até abrir (warn) ou desde que abriu (urgent). Null sem `openTime` legível. */
+  minutesToOpen: number | null;
 }
 
 interface BookingNotif {
@@ -85,6 +108,14 @@ function formatDate(dateStr: string) {
   } catch {
     return dateStr;
   }
+}
+
+/** "HH:mm" de hoje como ISO — o card mede a espera a partir da abertura da área. */
+function openedAtIso(openTime?: string): string {
+  const d = new Date();
+  const [h, m] = (openTime ?? '00:00').split(':').map(Number);
+  d.setHours(Number.isFinite(h) ? h : 0, Number.isFinite(m) ? m : 0, 0, 0);
+  return d.toISOString();
 }
 
 // ─── Browser notification helper ─────────────────────────────────────────────
@@ -141,6 +172,10 @@ export function NotificationCenter() {
   const [petExceptions, setPetExceptions] = useState<PetExceptionItem[]>([]);
   const [petExcOpen, setPetExcOpen] = useState<PetExceptionItem | null>(null);
   const [bookings, setBookings] = useState<BookingNotif[]>([]);
+  // Áreas de liberação diária ainda fechadas hoje. Guarda a estrutura crua: o nível
+  // do alerta depende da hora e é recalculado a cada tique, não no fetch.
+  const [releasables, setReleasables] = useState<Structure[]>([]);
+  const [releasingId, setReleasingId] = useState<string | null>(null);
   const [clearingWa, setClearingWa] = useState(false);
 
   // Track previous counts to detect new arrivals
@@ -471,14 +506,27 @@ export function NotificationCenter() {
     setBookings(enriched);
   }, [propertyId, supabase, canAlert, flushBookings]);
 
+  // Áreas com liberação diária. São poucas linhas (2 em produção) e mudam raramente
+  // — o refetch vem do clique de liberar e do realtime de `structures`, não de polling.
+  const fetchReleasables = useCallback(async () => {
+    if (!propertyId) return;
+    const { data } = await supabase
+      .from('structures')
+      .select('id, name, requiresDailyRelease, releasedForDate, operatingHours, units, unitStatus, outOfService')
+      .eq('propertyId', propertyId)
+      .eq('requiresDailyRelease', true)
+      .neq('visibility', 'map_only');
+    setReleasables((data ?? []) as Structure[]);
+  }, [propertyId, supabase]);
+
   // ─── Initial load ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!propertyId || !canSeeBell) return;
-    Promise.all([fetchWhatsapp(), fetchConcierge(), fetchBookings(), fetchPetExceptions()]).then(() => {
+    Promise.all([fetchWhatsapp(), fetchConcierge(), fetchBookings(), fetchPetExceptions(), fetchReleasables()]).then(() => {
       initialized.current = true;
     });
-  }, [propertyId, canSeeBell, fetchWhatsapp, fetchConcierge, fetchBookings, fetchPetExceptions]);
+  }, [propertyId, canSeeBell, fetchWhatsapp, fetchConcierge, fetchBookings, fetchPetExceptions, fetchReleasables]);
 
   // ─── Request browser notification permission (only roles that get alerts) ───
 
@@ -508,6 +556,29 @@ export function NotificationCenter() {
     } catch { /* ignore */ }
   }, []);
 
+  // ─── Áreas fechadas: nível derivado do relógio ──────────────────────────────
+  // A escada é a do fundador (05/09/2026): 30 min antes de abrir só o sino; ao
+  // bater o horário de abertura com a área ainda fechada, vira card de urgência.
+  // Recalculado a cada tique — por isso o relógio abaixo roda também quando não
+  // há nada urgente na fila.
+  const closedAreas = useMemo<ClosedAreaNotif[]>(() => {
+    const { today, minutes } = nowInProperty(new Date(nowTick));
+    return releasables
+      .map(s => {
+        const open = hhmmToMinutes(s.operatingHours?.openTime);
+        return {
+          id: s.id,
+          name: s.name,
+          openTime: s.operatingHours?.openTime,
+          closeTime: s.operatingHours?.closeTime,
+          level: releaseAlertLevel(s, today, minutes),
+          minutesToOpen: open === null ? null : open - minutes,
+        };
+      })
+      .filter(a => a.level !== 'none')
+      .sort((a, b) => (a.openTime ?? '').localeCompare(b.openTime ?? ''));
+  }, [releasables, nowTick]);
+
   const urgentItems = useMemo<UrgentItem[]>(() => {
     const onConciergePage = pathname?.startsWith('/admin/concierge') ?? false;
     const onBookingsPage = pathname?.startsWith('/admin/estruturas/bookings') ?? false;
@@ -527,8 +598,20 @@ export function NotificationCenter() {
       detail: `${b.guestName ? b.guestName + ' · ' : ''}${b.startTime}–${b.endTime} · ${formatDate(b.date)}`,
       createdAt: b.createdAt,
     }));
-    return [...fromConcierge, ...fromBookings].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  }, [concierge, bookings, pathname]);
+    // Área que já deveria estar aberta e continua bloqueada. O `createdAt` é o
+    // horário de abertura de hoje: o "espera há X min" do card vira exatamente
+    // "há quanto tempo a área está fechada devendo estar aberta".
+    const fromRelease: UrgentItem[] = onBookingsPage ? [] : closedAreas
+      .filter(a => a.level === 'urgent')
+      .map(a => ({
+        id: `release-${a.id}`,
+        kind: 'release' as const,
+        title: a.name,
+        detail: a.openTime ? `Abriu às ${a.openTime} e continua bloqueada` : 'Continua bloqueada',
+        createdAt: openedAtIso(a.openTime),
+      }));
+    return [...fromConcierge, ...fromBookings, ...fromRelease].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }, [concierge, bookings, closedAreas, pathname]);
 
   const urgentRef = useRef<UrgentItem[]>([]);
   urgentRef.current = urgentItems;
@@ -541,13 +624,18 @@ export function NotificationCenter() {
   const silenced = !!suppress && nowTick < suppress.until && urgentItems.every(i => suppress.ids.includes(i.id));
   const cardVisible = canAlert && urgentItems.length > 0 && !silenced;
 
-  // Relógio do card ("espera há X min") e vencimento do silêncio.
+  // Relógio do card ("espera há X min"), vencimento do silêncio e — desde 05/09/2026
+  // — a escada da área fechada, que muda de nível com a hora e não com um evento do
+  // banco. Por isso ele roda para quem só VÊ o sino (admin, gerente), não apenas para
+  // quem recebe alerta: sem o tique, o nível ficaria congelado no primeiro render.
+  const hasReleaseWatch = releasables.length > 0;
   useEffect(() => {
-    if (!canAlert || urgentItems.length === 0) return;
+    if (!canSeeBell) return;
+    if (!hasReleaseWatch && (!canAlert || urgentItems.length === 0)) return;
     setNowTick(Date.now());
     const id = setInterval(() => setNowTick(Date.now()), 30_000);
     return () => clearInterval(id);
-  }, [canAlert, urgentItems.length]);
+  }, [canSeeBell, canAlert, urgentItems.length, hasReleaseWatch]);
 
   // Insistência: campainha a cada 2 min enquanto o card estiver na tela.
   useEffect(() => {
@@ -566,8 +654,14 @@ export function NotificationCenter() {
       playUrgentSound();
       setNowTick(Date.now());
       if (document.visibilityState !== 'visible') {
-        const title = items.length === 1 ? '🛎️ Hóspede aguardando' : `🛎️ ${items.length} pedidos aguardando`;
-        fireBrowserNotification(title, `O mais antigo espera há ${waited} min.`, () => router.push(items[0].kind === 'concierge' ? '/admin/concierge' : '/admin/estruturas/bookings'), {
+        const onlyRelease = items.every(i => i.kind === 'release');
+        const title = onlyRelease
+          ? (items.length === 1 ? '🔒 Área fechada para o hóspede' : `🔒 ${items.length} áreas fechadas`)
+          : (items.length === 1 ? '🛎️ Hóspede aguardando' : `🛎️ ${items.length} pendências aguardando`);
+        const body = onlyRelease
+          ? `${items[0].title} deveria estar aberta há ${waited} min.`
+          : `O mais antigo espera há ${waited} min.`;
+        fireBrowserNotification(title, body, () => router.push(items[0].kind === 'concierge' ? '/admin/concierge' : '/admin/estruturas/bookings'), {
           tag: 'aura-urgent',
           requireInteraction: true,
         });
@@ -609,6 +703,25 @@ export function NotificationCenter() {
     }
   }, [bookings, propertyId, userData, refetchNotifCounts]);
 
+  // Liberar a área sem sair de onde se está. O alerta que cobra a liberação é o
+  // mesmo que resolve: mandar a recepção até /admin/estruturas/bookings para um
+  // clique é o atrito que produziu 43 dias esquecidos em 92.
+  const releaseArea = useCallback(async (structureId: string) => {
+    const area = releasables.find(s => s.id === structureId);
+    if (!area || !propertyId || !userData) return;
+    const { today } = nowInProperty();
+    setReleasingId(structureId);
+    try {
+      await StructureService.setDailyRelease(propertyId, structureId, today, userData.id, userData.fullName, area.name);
+      setReleasables(prev => prev.map(s => s.id === structureId ? { ...s, releasedForDate: today } : s));
+      toast.success(`${area.name} liberada para uso.`);
+    } catch {
+      toast.error('Não foi possível liberar a área.');
+    } finally {
+      setReleasingId(null);
+    }
+  }, [releasables, propertyId, userData]);
+
   // ─── Cleanup dos timers de coalescência ─────────────────────────────────────
 
   useEffect(() => {
@@ -648,12 +761,21 @@ export function NotificationCenter() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'structure_bookings', filter: `propertyId=eq.${propertyId}` }, fetchBookings)
       .subscribe();
 
+    // Liberação feita em OUTRA tela (a agenda, ou o balcão do lado) tem que apagar
+    // o alerta aqui — senão o card fica cobrando o que já foi resolvido. São poucas
+    // linhas e mudam raramente: o tráfego é desprezível.
+    const structuresChannel = supabase
+      .channel(`notif_structures_${propertyId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'structures', filter: `propertyId=eq.${propertyId}` }, fetchReleasables)
+      .subscribe();
+
     return () => {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(conciergeChannel);
       supabase.removeChannel(bookingsChannel);
+      supabase.removeChannel(structuresChannel);
     };
-  }, [propertyId, canSeeBell, supabase, fetchWhatsapp, fetchConcierge, fetchBookings]);
+  }, [propertyId, canSeeBell, supabase, fetchWhatsapp, fetchConcierge, fetchBookings, fetchReleasables]);
 
   // ─── Close on click outside ─────────────────────────────────────────────────
 
@@ -701,7 +823,9 @@ export function NotificationCenter() {
   // número. O badge âmbar é só de pendência que exige ação: concierge e agenda.
 
   const waCount = Math.max(counts.messages, whatsapp.length);
-  const actionable = concierge.length + bookings.length + petExceptions.length;
+  // Área fechada entra no badge: é pendência de ação com hora marcada. Não entra
+  // antes de faltarem 30 min para a abertura — o nível 'none' já a deixou de fora.
+  const actionable = concierge.length + bookings.length + petExceptions.length + closedAreas.length;
   const total = (waCount > 0 ? 1 : 0) + actionable;
 
   // ─── Tab blinking ───────────────────────────────────────────────────────────
@@ -712,7 +836,7 @@ export function NotificationCenter() {
     if (actionable === 0 || !canAlert) return;
 
     const originalTitle = document.title;
-    const alertTitle = `(${actionable}) ${actionable === 1 ? 'pedido' : 'pedidos'} aguardando — Aura`;
+    const alertTitle = `(${actionable}) ${actionable === 1 ? 'pendência' : 'pendências'} — Aura`;
     let blinkState = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -801,6 +925,44 @@ export function NotificationCenter() {
                         accent="red"
                         onClick={() => { setOpen(false); setPetExcOpen(p); }}
                       />
+                    ))}
+                  </NotifSection>
+                )}
+
+                {/* Área fechada — logo abaixo do pet: tem hora marcada e o clique que
+                    resolve está aqui dentro, não em outra tela. */}
+                {closedAreas.length > 0 && (
+                  <NotifSection
+                    icon={<Lock size={14} className="text-amber-500" />}
+                    label="Áreas fechadas"
+                    count={closedAreas.length}
+                    accent="orange"
+                    onViewAll={() => goTo('/admin/estruturas/bookings')}
+                  >
+                    {closedAreas.map(a => (
+                      <div key={a.id} className="flex items-center gap-2 pr-3">
+                        <div className="flex-1 min-w-0">
+                          <NotifRow
+                            title={a.name}
+                            subtitle={a.level === 'urgent'
+                              ? `Deveria ter aberto${a.openTime ? ` às ${a.openTime}` : ''} e continua bloqueada`
+                              : `Abre${a.openTime ? ` às ${a.openTime}` : ' em breve'} e ainda não foi liberada`}
+                            time={a.minutesToOpen === null
+                              ? 'fechada'
+                              : a.minutesToOpen > 0 ? `em ${a.minutesToOpen} min` : `há ${-a.minutesToOpen} min`}
+                            accent={a.level === 'urgent' ? 'red' : 'orange'}
+                            onClick={() => goTo('/admin/estruturas/bookings')}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={releasingId === a.id}
+                          onClick={() => releaseArea(a.id)}
+                          className="shrink-0 inline-flex items-center gap-1 h-7 px-2.5 rounded-lg bg-amber-500 text-white text-[11px] font-black disabled:opacity-50"
+                        >
+                          <Unlock size={11} /> Liberar
+                        </button>
+                      </div>
                     ))}
                   </NotifSection>
                 )}
@@ -945,11 +1107,12 @@ export function NotificationCenter() {
         <UrgentAlertCard
           items={urgentItems}
           now={nowTick}
-          busyId={busyBooking}
+          busyId={busyBooking ?? (releasingId ? `release-${releasingId}` : null)}
           onOpenConcierge={() => goTo('/admin/concierge')}
           onOpenBooking={() => goTo('/admin/estruturas/bookings')}
           onApprove={id => decideBooking(id, 'approved')}
           onReject={id => decideBooking(id, 'rejected')}
+          onRelease={releaseArea}
           onSuppress={suppressUrgent}
         />,
         overlayRoot ?? document.body

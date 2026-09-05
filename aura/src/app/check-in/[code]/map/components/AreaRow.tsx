@@ -6,7 +6,7 @@ import { MapArea, MapLang } from "../types";
 import { OpenBadge } from "./OpenBadge";
 import { formatHours, isOpenNow } from "../utils/hours";
 import { localizedName } from "../utils/localize";
-import { isUnitInMaintenance } from "@/services/structure-service";
+import { isAwaitingRelease, isFullyOutOfService } from "@/lib/structure-release";
 
 // Áreas que o hóspede pode agendar direto pelo portal.
 const isBookable = (a: MapArea) =>
@@ -14,11 +14,11 @@ const isBookable = (a: MapArea) =>
 // Áreas agendáveis apenas pela recepção (hóspede não agenda sozinho).
 const isReceptionOnly = (a: MapArea) => a.visibility === "admin_only";
 // Área de liberação diária ainda não liberada para hoje (bloqueada ao hóspede).
-const isAwaitingRelease = (a: MapArea) =>
-    !!a.requiresDailyRelease && a.releasedForDate !== new Date().toISOString().split("T")[0];
-// Todas as unidades fora de operação — a área inteira não tem o que agendar.
-const isFullyDown = (a: MapArea) =>
-    !!a.units?.length && a.units.every(u => isUnitInMaintenance(a.unitStatus, u.id));
+// "Hoje" aqui é o do relógio de quem olha — é tela de hóspede.
+const isAwaitingReleaseToday = (a: MapArea) =>
+    isAwaitingRelease(a, new Date().toISOString().split("T")[0]);
+// Nada a agendar: estrutura inteira fora de operação, ou todas as unidades fora.
+const isFullyDown = (a: MapArea) => isFullyOutOfService(a);
 
 interface AreaRowProps {
     area: MapArea;
@@ -41,7 +41,7 @@ function iconStyle(hex?: string): React.CSSProperties | undefined {
 
 export function AreaRow({ area, lang, openLabel, closedLabel, label24h, bookableLabel, receptionLabel, awaitingReleaseLabel, maintenanceLabel, onClick }: AreaRowProps) {
     const down = isBookable(area) && isFullyDown(area);
-    const awaiting = isBookable(area) && !down && isAwaitingRelease(area);
+    const awaiting = isBookable(area) && !down && isAwaitingReleaseToday(area);
     const bookable = isBookable(area) && !awaiting && !down;
     const reception = isReceptionOnly(area);
     const open = isOpenNow(area.operatingHours);

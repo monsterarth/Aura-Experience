@@ -95,9 +95,11 @@ export function CancelBookingDialog({ bk }: { bk: Bk }) {
  */
 export function UnitMaintenanceDialog({ bk }: { bk: Bk }) {
   const t = bk.unitTarget;
-  // Reservas do dia que ficam órfãs nesta unidade — a recepção precisa avisar esses hóspedes.
+  // `unitId: null` = a estrutura inteira (quem não tem unidades cadastradas).
+  const whole = !!t && !t.unitId;
+  // Reservas do dia que ficam órfãs — a recepção precisa avisar esses hóspedes.
   const affected = t
-    ? bk.bookings.filter(b => b.structureId === t.structure.id && b.unitId === t.unitId
+    ? bk.bookings.filter(b => b.structureId === t.structure.id && (whole || b.unitId === t.unitId)
         && b.type === "booking" && (b.status === "approved" || b.status === "pending")).length
     : 0;
   return (
@@ -106,8 +108,8 @@ export function UnitMaintenanceDialog({ bk }: { bk: Bk }) {
       onClose={() => { if (!bk.savingUnit) bk.setUnitTarget(null); }}
       presentation="auto"
       size="sm"
-      title="Tirar unidade de operação"
-      subtitle={t ? `${t.structure.name} · ${t.unitName}` : undefined}
+      title={whole ? "Tirar área de operação" : "Tirar unidade de operação"}
+      subtitle={t ? (whole ? t.structure.name : `${t.structure.name} · ${t.unitName}`) : undefined}
       footerRow
       footer={(
         <>
@@ -118,13 +120,14 @@ export function UnitMaintenanceDialog({ bk }: { bk: Bk }) {
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <p style={{ margin: 0, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
-          A unidade sai da agenda e do portal do hóspede <strong style={{ color: T.text }}>até alguém devolvê-la à operação</strong> — não volta sozinha à meia-noite e não precisa ser bloqueada horário por horário todo dia. As outras unidades da estrutura seguem normalmente.
+          {whole ? "A área inteira sai" : "A unidade sai"} da agenda e do portal do hóspede <strong style={{ color: T.text }}>até alguém devolvê-la à operação</strong> — não volta sozinha à meia-noite e não precisa ser bloqueada horário por horário todo dia.
+          {whole ? " Enquanto estiver fora, o sistema também para de cobrar a liberação diária dela." : " As outras unidades da estrutura seguem normalmente."}
         </p>
         {affected > 0 && (
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, border: `1px solid ${T.orangeBorder}`, background: T.orangeBg }}>
             <Info size={15} color={T.orange} style={{ marginTop: 1, flexShrink: 0 }} />
             <span style={{ fontSize: 12.5, color: T.text, lineHeight: 1.45 }}>
-              {affected === 1 ? "Há 1 reserva de hóspede" : `Há ${affected} reservas de hóspede`} hoje nesta unidade. Elas continuam na agenda do dia para você cancelar e avisar quem reservou.
+              {affected === 1 ? "Há 1 reserva de hóspede" : `Há ${affected} reservas de hóspede`} hoje {whole ? "nesta área" : "nesta unidade"}. Elas continuam na agenda do dia para você cancelar e avisar quem reservou.
             </span>
           </div>
         )}

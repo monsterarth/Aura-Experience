@@ -2,16 +2,12 @@ import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { Structure, StructureBooking, StructureUnitState, TimeSlot } from "@/types/aura";
 import { AuditService } from "./audit-service";
 
-// Regra única de "esta unidade está fora de operação". Usada pela agenda do admin, pelo
-// portal do hóspede e pela rota que grava a reserva — todas leem daqui para não divergir.
-// Estrutura sem unidades nunca cai neste caminho (o estado é por unidade, não por estrutura).
-export function isUnitInMaintenance(
-    unitStatus: Structure["unitStatus"] | null | undefined,
-    unitId?: string | null
-): boolean {
-    if (!unitId) return false;
-    return unitStatus?.[unitId]?.status === "maintenance";
-}
+// Regra única de "esta unidade está fora de operação". Mudou de casa em 05/09/2026:
+// mora em `@/lib/structure-release` junto com a liberação diária e o estado da
+// estrutura inteira (o cron do push precisa das três sem puxar o client do Supabase).
+// Reexportada daqui porque agenda, portal e rota do hóspede já importavam deste
+// arquivo — o call site continua valendo.
+export { isUnitInMaintenance } from "@/lib/structure-release";
 
 export const StructureService = {
 
@@ -204,6 +200,40 @@ export const StructureService = {
         });
 
         return next;
+    },
+
+    // Tira a ESTRUTURA INTEIRA de operação (ou devolve). Mesmo gesto e mesmo estado
+    // persistente do `setUnitStatus`, um nível acima — é o caminho de quem não tem
+    // unidades cadastradas, que até 05/09/2026 só podia sumir do portal relançando
+    // bloqueio manual todo dia. Fonte única de escrita: a Agenda de Estruturas.
+    async setOutOfService(
+        propertyId: string,
+        structureId: string,
+        state: StructureUnitState | null,
+        actorId: string,
+        actorName: string,
+        structureName?: string
+    ): Promise<void> {
+        const { error } = await supabase
+            .from('structures')
+            .update({ outOfService: state })
+            .eq('id', structureId)
+            .eq('propertyId', propertyId);
+
+        if (error) throw error;
+
+        const label = structureName ? ` "${structureName}"` : '';
+        await AuditService.log({
+            propertyId,
+            userId: actorId,
+            userName: actorName,
+            action: state ? "STRUCTURE_OUT_OF_SERVICE" : "STRUCTURE_RESTORED",
+            entity: "STRUCTURE",
+            entityId: structureId,
+            details: state
+                ? `Estrutura${label} fora de operação${state.note ? `: ${state.note}` : '.'}`
+                : `Estrutura${label} devolvida à operação.`
+        });
     },
 
     async deleteStructure(propertyId: string, structureId: string, actorId: string, actorName: string): Promise<void> {

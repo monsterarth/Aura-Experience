@@ -15,7 +15,8 @@ export type ModalState = { structureId: string; unitId?: string; isFreeTime?: bo
 export type BookingType = "booking" | "maintenance_block";
 export type CancelTarget = { booking: StructureBooking; structureId: string; requiresTurnover: boolean };
 export type SlotTarget = { booking: StructureBooking; structure: Structure };
-export type UnitMaintenanceTarget = { structure: Structure; unitId: string; unitName: string };
+/** `unitId: null` = a estrutura INTEIRA sai de operação (caminho de quem não tem unidades). */
+export type UnitMaintenanceTarget = { structure: Structure; unitId: string | null; unitName: string };
 
 export function useBookings() {
   const { currentProperty } = useProperty();
@@ -122,7 +123,12 @@ export function useBookings() {
   const applyUnitStatus = (structureId: string, next: Record<string, StructureUnitState>) =>
     setStructures(prev => prev.map(s => s.id === structureId ? { ...s, unitStatus: next } : s));
 
-  const openUnitMaintenance = (structure: Structure, unitId: string, unitName: string) => {
+  // Idem para a estrutura inteira (estrutura sem unidades cadastradas).
+  const applyOutOfService = (structureId: string, next: StructureUnitState | null) =>
+    setStructures(prev => prev.map(s => s.id === structureId ? { ...s, outOfService: next ?? undefined } : s));
+
+  /** `unitId: null` abre o fluxo para a estrutura inteira. */
+  const openUnitMaintenance = (structure: Structure, unitId: string | null, unitName: string) => {
     setUnitTarget({ structure, unitId, unitName });
     setUnitNote("");
   };
@@ -131,36 +137,53 @@ export function useBookings() {
     if (!currentProperty || !userData || !unitTarget) return;
     if (!unitNote.trim()) { toast.error("Descreva o motivo (aparece para a equipe e para o hóspede)."); return; }
     setSavingUnit(true);
+    const state: StructureUnitState = { status: "maintenance", note: unitNote.trim(), since: new Date().toISOString(), byName: userData.fullName };
     try {
-      const next = await StructureService.setUnitStatus(
-        currentProperty.id, unitTarget.structure.id, unitTarget.unitId,
-        { status: "maintenance", note: unitNote.trim(), since: new Date().toISOString(), byName: userData.fullName },
-        userData.id, userData.fullName,
-        { structureName: unitTarget.structure.name, unitName: unitTarget.unitName },
-      );
-      applyUnitStatus(unitTarget.structure.id, next);
+      if (unitTarget.unitId) {
+        const next = await StructureService.setUnitStatus(
+          currentProperty.id, unitTarget.structure.id, unitTarget.unitId, state,
+          userData.id, userData.fullName,
+          { structureName: unitTarget.structure.name, unitName: unitTarget.unitName },
+        );
+        applyUnitStatus(unitTarget.structure.id, next);
+      } else {
+        await StructureService.setOutOfService(
+          currentProperty.id, unitTarget.structure.id, state,
+          userData.id, userData.fullName, unitTarget.structure.name,
+        );
+        applyOutOfService(unitTarget.structure.id, state);
+      }
       toast.success(`${unitTarget.unitName} fora de operação.`);
       setUnitTarget(null);
       setUnitNote("");
     } catch {
-      toast.error("Erro ao tirar a unidade de operação.");
+      toast.error("Erro ao tirar de operação.");
     } finally {
       setSavingUnit(false);
     }
   };
 
-  const restoreUnit = async (structure: Structure, unitId: string, unitName: string) => {
+  /** `unitId: null` devolve a estrutura inteira. */
+  const restoreUnit = async (structure: Structure, unitId: string | null, unitName: string) => {
     if (!currentProperty || !userData) return;
     try {
-      const next = await StructureService.setUnitStatus(
-        currentProperty.id, structure.id, unitId, null,
-        userData.id, userData.fullName,
-        { structureName: structure.name, unitName },
-      );
-      applyUnitStatus(structure.id, next);
+      if (unitId) {
+        const next = await StructureService.setUnitStatus(
+          currentProperty.id, structure.id, unitId, null,
+          userData.id, userData.fullName,
+          { structureName: structure.name, unitName },
+        );
+        applyUnitStatus(structure.id, next);
+      } else {
+        await StructureService.setOutOfService(
+          currentProperty.id, structure.id, null,
+          userData.id, userData.fullName, structure.name,
+        );
+        applyOutOfService(structure.id, null);
+      }
       toast.success(`${unitName} de volta à operação.`);
     } catch {
-      toast.error("Erro ao devolver a unidade à operação.");
+      toast.error("Erro ao devolver à operação.");
     }
   };
 
