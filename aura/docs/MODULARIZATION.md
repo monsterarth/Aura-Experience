@@ -421,8 +421,9 @@ houver `propertyId` NULL, par repetido, ou `guests` numa publicação de realtim
 
 **Passo 3 — as FKs.** `migrations/guests_composite_fk.sql`: as 7 `(propertyId, guestId) REFERENCES
 guests(propertyId, id)` que **nunca existiram**. Até aqui quem garantia o escopo era o service
-lembrar de filtrar, e foi assim que as 18 linhas atravessaram. `stays` entra `NOT VALID` por causa
-da estadia órfã: vale para toda linha nova sem tocar no histórico.
+lembrar de filtrar, e foi assim que as 18 linhas atravessaram. `stays` nasceu `NOT VALID` por causa de uma estadia órfã, e foi **validada em seguida**
+(`guests_orphan_stay_repoint.sql`): a órfã era da LUADNY CAMILO, que tem ficha ativa sob o CPF —
+a estadia foi repontada para ela em vez de perder o titular. As 7 FKs valem para o histórico inteiro.
 
 **Passo 4 — o fim da trava.** Some a recusa por documento de outra pousada, a desistência
 silenciosa do `promoteGuestId` e o fallback `GUEST-HU` do Hsystem. Os três existiam pelo mesmo
@@ -437,16 +438,21 @@ criação de atualização.
 
 ### O que falta
 
-1. **As duas migrations em produção, no mesmo deploy do código.** Nesta ordem: subir o código,
-   rodar `guests_composite_pk.sql --target prod`, depois `guests_composite_fk.sql --target prod`.
-2. **`ALTER TABLE stays VALIDATE CONSTRAINT stays_guest_fk`**, depois de decidir o destino da
-   estadia órfã `59beae73` (anular o `guestId` ou recriar a ficha).
-3. **`contacts` tem a mesma doença**: PK global cujo id é o telefone. Duas pousadas não podem ter
+1. **As migrations em produção, no mesmo deploy do código.** Nesta ordem, depois de subir o código:
+   ```
+   pnpm db:sql migrations/modules_backfill_flags.sql   --target prod
+   pnpm db:sql migrations/guests_composite_pk.sql      --target prod
+   pnpm db:sql migrations/guests_composite_fk.sql      --target prod
+   pnpm db:sql migrations/guests_orphan_stay_repoint.sql --target prod
+   ```
+   A chave composta antes do deploy do código faz o PostgREST recusar toda gravação de ficha,
+   porque o `main` ainda usa `onConflict: 'id'`.
+2. **`contacts` tem a mesma doença**: PK global cujo id é o telefone. Duas pousadas não podem ter
    o mesmo contato. Fora do escopo desta rodada.
-4. **As 53 fichas provisórias `GUEST-*`** (35 na Fazenda, 19 na demo) agora conseguem ser
+3. **As 53 fichas provisórias `GUEST-*`** (35 na Fazenda, 19 na demo) agora conseguem ser
    promovidas mesmo quando o documento já existe noutra pousada. Vale medir daqui a um mês se o
    número caiu sozinho.
-5. **Fora de escopo, para `auth-security-remediation`:** os acessos a `stays` e `cabins` por id
+4. **Fora de escopo, para `auth-security-remediation`:** os acessos a `stays` e `cabins` por id
    cru. Não corrompem dado, são IDOR.
 
 ---
