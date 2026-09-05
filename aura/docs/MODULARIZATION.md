@@ -356,80 +356,98 @@ cair, o desligamento pegou a cesta junto e o passo 1 se desfaz num clique.
 
 ---
 
-## 10. Fatia 0 — o escopo de `guests` (bloqueante)
+## 10. `guests` multi-tenant — CONCLUÍDO no DEV em 05/09/2026
 
-> **Status: ESCRITAS ESCOPADAS em 04/09/2026** (branch `pet-policy`, não subiu para o `main`).
-> As 9 linhas abaixo foram aplicadas, mais uma trava explícita em `upsertGuestDirect`: documento
-> que já é ficha de OUTRA propriedade **recusa com mensagem** (a tela da recepção mostra o motivo)
-> em vez de sobrescrever. Remedido em produção no mesmo dia: 17 `stays` + 1 `contact`
-> contaminados (todos finalizados/cancelados, último checkout 28/06), 0 fichas sem `propertyId`,
-> 0 `vehicles` com `guestId`. A PK composta e a faxina das 18 linhas seguem para depois.
-> Efeito colateral aceito: unificar/promover uma ficha agora só reponta referências DESTA
-> propriedade — as 18 linhas contaminadas não acompanham mais (já eram de outro tenant).
+> **Status: os 4 passos executados** (branch `pet-policy`, **fora do `main`**).
+> **As duas migrations NÃO foram aplicadas em produção** — elas e o código vão no MESMO deploy.
+> Aplicar a PK composta sozinha faz o PostgREST recusar toda gravação de ficha, porque o código
+> publicado ainda usa `onConflict: 'id'`.
 
-### O bug
+### O bug, e por que a primeira correção não bastava
 
-`guests.id` é o CPF e é **chave primária global**. `GuestService.upsertGuest` lê
-`.eq('id', id)` **sem `propertyId`** (`guest-service.ts:100-103`) e grava
-`upsert(payload, { onConflict: 'id' })` (`:105`) com `propertyId` no payload. A pousada B
-sobrescreve a linha da pousada A **e leva o `propertyId` junto**. `findByDocument` (`:32-45`)
-filtra por propriedade, então A nunca mais acha a ficha.
+`guests.id` é o documento (o CPF, quando há um) e era chave primária **global**. `upsertGuestDirect`
+lia `.eq('id', id)` sem propriedade e gravava com `onConflict: 'id'`: a pousada B sobrescrevia a
+linha da pousada A **e levava o `propertyId` junto**. Como `findByDocument` filtra por propriedade,
+A nunca mais achava a ficha.
 
-`promoteGuestId:325-329` e `hsystem-service.ts:889-892` **já tratam** esse caso explicitamente —
-prova de que alguém viu o problema em dois caminhos e não no principal.
+A fatia 0 (04/09, `7226ea9`) escopou as escritas e trocou a corrupção por uma **recusa com
+mensagem**. Foi a decisão certa para uma base com um tenant real, e errada como estado final: ela
+bloqueia um hóspede legítimo que já se hospedou na pousada vizinha. Numa região de pousadas
+pequenas isso acontece na primeira semana, não no primeiro ano.
 
-### O que já aconteceu
+Pior: a mesma colisão tinha **três** comportamentos, e dois falhavam calados.
 
-416 hóspedes, 473 estadias. **18 linhas contaminadas** (17 `stays` + 1 `contact`), concentradas
-em 2 CPFs — ambos dados de teste do próprio fundador atravessando entre a Fazenda e a demo.
-`audit_logs` registra o pingue-pongue de um deles: modelo → rosa → modelo, com o `fullName` que a
-Fazenda gravou **sobrescrito**. Perda de dado real, em pequena escala, com o mecanismo já provado.
+| Caminho | Antes |
+|---|---|
+| Recepção cadastra a ficha | Erro na tela |
+| Hóspede faz o pré check-in | `promoteGuestId` desistia em silêncio; ficha ficava `GUEST-*` para sempre |
+| Reserva entra pela OTA | Caía em `GUEST-HU-<locator>`, provisória para sempre |
 
-> Nenhum hóspede de terceiro foi afetado — **porque só existe um tenant real hoje**. No dia em que
-> a Estância do Vale receber a reserva de alguém que já se hospedou na Fazenda, o mesmo mecanismo
-> rouba uma ficha de verdade.
+A premissa já era falsa para uma ficha em cada oito: de 417 fichas em produção, 53 têm id
+provisório, 33 têm documento que não é CPF (passaporte, CNH, RG) e 9 não têm documento nenhum.
 
-### O conserto, em duas etapas
+### A decisão: ficha por pousada
 
-**Agora — escopar as escritas.** O dano medido vem inteiro de escrita, e são poucas queries:
+A pergunta de fundo não era o tipo do identificador, e sim se o hóspede é **global** ou **por
+pousada**. Global significa a pousada B enxergar que a pessoa se hospedou na A. Cada pousada é
+controladora de dados própria, então isso é compartilhamento sem base legal — e era o que a chave
+global implementava por acidente.
 
-```
-src/services/guest-service.ts:100    + .eq('propertyId', propertyId)   ← o bug-mãe
-src/services/guest-service.ts:344    + .eq('propertyId', propertyId)   ← delete
-src/services/guest-service.ts:25     + .eq('propertyId', propertyId)   ← _repointGuestRefs (6 tabelas!)
-src/services/guest-service.ts:334    + .eq('propertyId', propertyId)
-src/services/stay-service.ts:257     + .eq('propertyId', propertyId)   ← rascunho do pré check-in
-src/services/stay-service.ts:328     + .eq('propertyId', propertyId)   ← submit: ÚNICO caminho sem login
-src/services/hsystem-service.ts:904  + .eq('propertyId', propertyId)
-src/services/stay-service.ts:427     + .eq('propertyId', propertyId)   ← fecha o portal inteiro
-src/services/guest-service.ts:17     + 'vehicles' em GUEST_REF_TABLES  ← passivo da Guarita
-```
+Decidido "por pousada", a chave composta `(propertyId, id)` é o caminho barato: as 7 tabelas
+filhas e o `audit_logs` **já carregavam `propertyId`**. O id sintético (documento virando campo
+indexado) resolveria também o estrangeiro sem CPF e a troca de documento, ao custo de repontar
+~1.400 linhas e desfazer a premissa "o id é o documento", espalhada por `guest-doc.ts`,
+`promoteGuestId`, a busca do CRM e as telas de cadastro. **A composta não impede a sintética
+depois; o gatilho dela é o passaporte, não a multi-tenancy.**
 
-Nove linhas, zero DDL, zero risco de indisponibilidade. **`_repointGuestRefs` é o mais perigoso
-da lista** e não estava em nenhum levantamento inicial: ele reponta `guestId` em 6 tabelas sem
-filtro de propriedade.
+### O que foi feito
 
-**Depois — a chave composta `(propertyId, id)`**, quando a segunda propriedade tiver reserva
-confirmada. É o conserto do *modelo* (permite o mesmo CPF em duas pousadas, e destrava as FKs
-compostas que hoje não existem), e as 7 tabelas filhas **já têm `propertyId`** — não falta coluna
-nenhuma. Mas exige auditar **71** call sites de `guests` num único deploy: sob PK composta, todo
-`.eq('id', x).single()` sem propriedade passa a estourar, e os `.in('id', …)` de leitura em lote
-falham em silêncio (o padrão do repo é `map[g.id] = g.fullName`, último vence — nome do tenant
-errado no mapa de reservas, calado). Fazer isso sob pressão, com o portal e três crons na linha
-de fogo, é como se derruba produção.
+**Faxina (05/09).** As 18 linhas contaminadas (17 estadias + 1 contato, 2 CPFs de teste do
+fundador, todas encerradas) foram removidas dos dois bancos, com backup em disco antes. As
+estadias e seus 15 dependentes (2 tarefas de faxina canceladas, 12 mensagens, 1 presença de café)
+foram apagados; o contato foi **desvinculado**, não apagado, porque é um contato de WhatsApp real.
+A estadia órfã `59beae73` ficou de pé: não é cruzada, não bloqueia nada, e apagá-la destruiria uma
+estadia finalizada de verdade.
 
-> **Ordem obrigatória se e quando for a PK composta:** código completo + migration no MESMO
-> deploy → só então a faxina das 18 linhas → FKs por último. Nunca a faxina primeiro: sob a PK
-> atual ela é um `ON CONFLICT DO NOTHING` silencioso, e sob a nova ela cria de propósito a
-> primeira colisão, quebrando toda leitura ainda não escopada.
+**Passo 1 — as leituras (`8a8fdfc`).** Medido antes de mexer: 73 pontos de acesso a `guests`, 10
+escritas (7 já escopadas) e 63 leituras (14 já escopadas). Das 49 sem escopo, **44 já tinham
+`propertyId` como parâmetro da própria função**, 5 tiraram de um `stay` já carregado, e **nenhuma
+exigiu mudar cadeia de chamada** — o que derruba o número de "71 call sites num deploy atômico"
+que este documento trazia antes. Enquanto não existe documento duplicado, é um no-op.
 
-**Fora de escopo, registrar em `auth-security-remediation`:** ~56 leituras de `guests` e os
-acessos a `stays`/`cabins` por id cru. Não corrompem dado — são IDOR/vazamento de nome. Rodada
-própria.
+**Passo 2 — a chave (`8a72dad`).** `migrations/guests_composite_pk.sql`, com travas que abortam se
+houver `propertyId` NULL, par repetido, ou `guests` numa publicação de realtime. Junto,
+`onConflict: 'propertyId,id'` no upsert. Zero linha transformada.
 
-**Decisões que dependem do fundador:** a estadia órfã `59beae73` (Fazenda, `finished`, 19/05)
-aponta para uma ficha que não existe mais; e há 54 fichas provisórias `GUEST-*` vivas (35 na
-Fazenda, 19 na demo), 9 sem documento nenhum.
+**Passo 3 — as FKs.** `migrations/guests_composite_fk.sql`: as 7 `(propertyId, guestId) REFERENCES
+guests(propertyId, id)` que **nunca existiram**. Até aqui quem garantia o escopo era o service
+lembrar de filtrar, e foi assim que as 18 linhas atravessaram. `stays` entra `NOT VALID` por causa
+da estadia órfã: vale para toda linha nova sem tocar no histórico.
+
+**Passo 4 — o fim da trava.** Some a recusa por documento de outra pousada, a desistência
+silenciosa do `promoteGuestId` e o fallback `GUEST-HU` do Hsystem. Os três existiam pelo mesmo
+motivo, e o motivo acabou. A leitura do upsert continua, escopada, só para o log distinguir
+criação de atualização.
+
+### Provado no DEV
+
+- O mesmo CPF coexiste nas duas pousadas, e a ficha original fica intacta.
+- O upsert composto funciona no insert e no update.
+- Estadia da Estância apontando para ficha que só existe na Fazenda é recusada com `23503`.
+
+### O que falta
+
+1. **As duas migrations em produção, no mesmo deploy do código.** Nesta ordem: subir o código,
+   rodar `guests_composite_pk.sql --target prod`, depois `guests_composite_fk.sql --target prod`.
+2. **`ALTER TABLE stays VALIDATE CONSTRAINT stays_guest_fk`**, depois de decidir o destino da
+   estadia órfã `59beae73` (anular o `guestId` ou recriar a ficha).
+3. **`contacts` tem a mesma doença**: PK global cujo id é o telefone. Duas pousadas não podem ter
+   o mesmo contato. Fora do escopo desta rodada.
+4. **As 53 fichas provisórias `GUEST-*`** (35 na Fazenda, 19 na demo) agora conseguem ser
+   promovidas mesmo quando o documento já existe noutra pousada. Vale medir daqui a um mês se o
+   número caiu sozinho.
+5. **Fora de escopo, para `auth-security-remediation`:** os acessos a `stays` e `cabins` por id
+   cru. Não corrompem dado, são IDOR.
 
 ---
 
