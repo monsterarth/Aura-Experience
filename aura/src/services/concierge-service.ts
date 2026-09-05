@@ -279,7 +279,7 @@ export const ConciergeService = {
       auditDetails = `Pedido de concierge: ${data.quantity}x ${itemName}`;
       if (cabinRes.data && stayRes.data) {
         const { data: guestData } = await db()
-          .from('guests').select('fullName').eq('id', stayRes.data.guestId).single();
+          .from('guests').select('fullName').eq('id', stayRes.data.guestId).eq('propertyId', data.propertyId).single();
         if (guestData) {
           const firstName = guestData.fullName.split(' ')[0];
           auditUserName = `${cabinRes.data.number} - ${firstName}`;
@@ -393,7 +393,7 @@ export const ConciergeService = {
       const { data: stay } = await db().from('stays').select('guestId, cabinId').eq('id', req.stayId).single();
       if (stay) {
         const [{ data: guest }, { data: cabin }] = await Promise.all([
-          stay.guestId ? db().from('guests').select('fullName').eq('id', stay.guestId).single() : Promise.resolve({ data: null }),
+          stay.guestId ? db().from('guests').select('fullName').eq('id', stay.guestId).eq('propertyId', propertyId).single() : Promise.resolve({ data: null }),
           stay.cabinId ? db().from('cabins').select('name').eq('id', stay.cabinId).single() : Promise.resolve({ data: null }),
         ]);
         const who = guest?.fullName?.split(' ')[0] || '';

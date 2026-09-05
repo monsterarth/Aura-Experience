@@ -446,7 +446,7 @@ export async function GET(request: NextRequest) {
         const guestIds = Array.from(new Set((staysData ?? []).map((s: any) => s.guestId).filter(Boolean)));
         const cabinIds = Array.from(new Set((staysData ?? []).map((s: any) => s.cabinId).filter(Boolean)));
         const [guestsRes2, cabinsRes2] = await Promise.all([
-          guestIds.length ? supabaseAdmin.from('guests').select('id, fullName').in('id', guestIds) : { data: [] },
+          guestIds.length ? supabaseAdmin.from('guests').select('id, fullName').in('id', guestIds).eq('propertyId', propertyId) : { data: [] },
           cabinIds.length ? supabaseAdmin.from('cabins').select('id, name').in('id', cabinIds) : { data: [] },
         ]);
         const guestNameMap: Record<string, string> = {};

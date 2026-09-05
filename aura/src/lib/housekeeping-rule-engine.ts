@@ -227,7 +227,7 @@ export async function applyDailyRules(
         skippedAt = new Date().toISOString();
         if (stay.guestId) {
           const { data: guest } = await supabaseAdmin
-            .from('guests').select('fullName').eq('id', stay.guestId).single();
+            .from('guests').select('fullName').eq('id', stay.guestId).eq('propertyId', propertyId).single();
           guestName = guest?.fullName ?? null;
         }
       } else {

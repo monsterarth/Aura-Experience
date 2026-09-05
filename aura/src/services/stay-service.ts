@@ -40,7 +40,7 @@ export const StayService = {
       const { data: stay } = await supabase.from('stays').select('*').eq('id', stayId).single();
       if (!stay) return { queued: false, reason: 'stay_not_found' };
 
-      const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).single();
+      const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).eq('propertyId', propertyId).single();
       if (!guest || !guest.phone) return { queued: false, reason: 'guest_no_phone' };
 
       let cabin = undefined;
@@ -539,7 +539,7 @@ export const StayService = {
     // Build human-readable audit details
     let guestFirstName = '';
     try {
-      const { data: guest } = await supabase.from('guests').select('fullName').eq('id', stay.guestId).single();
+      const { data: guest } = await supabase.from('guests').select('fullName').eq('id', stay.guestId).eq('propertyId', propertyId).single();
       if (guest?.fullName) guestFirstName = guest.fullName.split(' ')[0];
     } catch { /* silent */ }
     const cabinLabel = cabin.number && guestFirstName
@@ -656,7 +656,7 @@ export const StayService = {
       if (stay) {
         const [{ data: cabinData }, { data: guestData }] = await Promise.all([
           stay.cabinId ? supabase.from('cabins').select('number').eq('id', stay.cabinId).single() : Promise.resolve({ data: null }),
-          supabase.from('guests').select('fullName').eq('id', stay.guestId).single(),
+          supabase.from('guests').select('fullName').eq('id', stay.guestId).eq('propertyId', propertyId).single(),
         ]);
         const cabinNum = cabinData?.number || '';
         const firstName = guestData?.fullName?.split(' ')[0] || '';
@@ -680,7 +680,7 @@ export const StayService = {
     if (error) throw error;
 
     const { data: newGuest } = await supabase
-      .from('guests').select('fullName').eq('id', newGuestId).maybeSingle();
+      .from('guests').select('fullName').eq('id', newGuestId).eq('propertyId', propertyId).maybeSingle();
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: "REASSIGN_GUEST", entity: "STAY", entityId: stayId,

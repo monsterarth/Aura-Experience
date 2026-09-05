@@ -934,7 +934,7 @@ export const HsystemService = {
     });
     if (error) {
       // Corrida (dois ciclos simultâneos) — se a ficha apareceu, segue com ela.
-      const { data: retry } = await db().from("guests").select("id").eq("id", id).maybeSingle();
+      const { data: retry } = await db().from("guests").select("id").eq("id", id).eq("propertyId", propertyId).maybeSingle();
       if (!retry) throw new Error(`insert do hóspede falhou: ${error.message}`);
     }
     return id;

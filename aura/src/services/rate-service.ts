@@ -2043,7 +2043,7 @@ export const RateService = {
     const cabinIds = Array.from(new Set(rows.map((r) => r.cabinId).filter(Boolean))) as string[];
     const [guestsRes, cabinsRes] = await Promise.all([
       guestIds.length
-        ? admin.from("guests").select("id, fullName").in("id", guestIds)
+        ? admin.from("guests").select("id, fullName").in("id", guestIds).eq("propertyId", propertyId)
         : Promise.resolve({ data: [] }),
       cabinIds.length
         ? admin.from("cabins").select("id, name").in("id", cabinIds)

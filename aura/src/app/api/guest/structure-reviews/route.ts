@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
     let displayName: string | null = (typeof body.guestName === "string" && body.guestName) || null;
     const realGuestId = guestId ?? stay.guestId ?? null;
     if (realGuestId) {
-        const { data: g } = await supabaseAdmin.from("guests").select("fullName").eq("id", realGuestId).maybeSingle();
+        const { data: g } = await supabaseAdmin.from("guests").select("fullName").eq("id", realGuestId).eq("propertyId", propertyId).maybeSingle();
         if (g?.fullName) displayName = g.fullName.split(" ")[0];
     }
 

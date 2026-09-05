@@ -388,7 +388,7 @@ export const StructureService = {
                 if (stayData) {
                     const [{ data: cabinData }, { data: guestData }] = await Promise.all([
                         supabase.from('cabins').select('number').eq('id', stayData.cabinId).single(),
-                        supabase.from('guests').select('fullName').eq('id', stayData.guestId).single(),
+                        supabase.from('guests').select('fullName').eq('id', stayData.guestId).eq('propertyId', propertyId).single(),
                     ]);
                     if (cabinData && guestData) {
                         const firstName = guestData.fullName.split(' ')[0];
@@ -501,7 +501,7 @@ export const StructureService = {
                     if (stay) {
                         const [{ data: cabinData }, { data: guestData }] = await Promise.all([
                             supabase.from('cabins').select('number').eq('id', stay.cabinId).single(),
-                            supabase.from('guests').select('fullName').eq('id', stay.guestId).single(),
+                            supabase.from('guests').select('fullName').eq('id', stay.guestId).eq('propertyId', propertyId).single(),
                         ]);
                         if (cabinData && guestData) {
                             guestLabel = `cabana ${cabinData.number} - ${guestData.fullName.split(' ')[0]}`;

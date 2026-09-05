@@ -50,7 +50,7 @@ export async function chatwootSyncOnPreCheckinComplete(stayId: string) {
   const { data: stay } = await supabaseAdmin.from("stays").select("*").eq("id", stayId).maybeSingle();
   if (!stay) return;
   const [{ data: guest }, property] = await Promise.all([
-    supabaseAdmin.from("guests").select("*").eq("id", stay.guestId).maybeSingle(),
+    supabaseAdmin.from("guests").select("*").eq("id", stay.guestId).eq("propertyId", stay.propertyId).maybeSingle(),
     fetchProperty(stay.propertyId),
   ]);
   if (!guest) return;
@@ -64,7 +64,7 @@ export async function chatwootSyncOnCancelled(stayId: string) {
   const { data: stay } = await supabaseAdmin.from("stays").select("*").eq("id", stayId).maybeSingle();
   if (!stay) return;
   const [{ data: guest }, property, { data: others }] = await Promise.all([
-    supabaseAdmin.from("guests").select("*").eq("id", stay.guestId).maybeSingle(),
+    supabaseAdmin.from("guests").select("*").eq("id", stay.guestId).eq("propertyId", stay.propertyId).maybeSingle(),
     fetchProperty(stay.propertyId),
     supabaseAdmin.from("stays").select("id").eq("guestId", stay.guestId).in("status", ["pending", "pre_checkin_done"]).neq("id", stayId).limit(1),
   ]);
@@ -81,7 +81,7 @@ export async function chatwootSyncOnCheckIn(stayId: string) {
   const { data: stay } = await supabaseAdmin.from("stays").select("*").eq("id", stayId).maybeSingle();
   if (!stay) return;
   const [{ data: guest }, property] = await Promise.all([
-    supabaseAdmin.from("guests").select("*").eq("id", stay.guestId).maybeSingle(),
+    supabaseAdmin.from("guests").select("*").eq("id", stay.guestId).eq("propertyId", stay.propertyId).maybeSingle(),
     fetchProperty(stay.propertyId),
   ]);
   if (!guest) return;
@@ -95,7 +95,7 @@ export async function chatwootSyncOnCheckOut(stayId: string) {
   const { data: stay } = await supabaseAdmin.from("stays").select("*").eq("id", stayId).maybeSingle();
   if (!stay) return;
   const [{ data: guest }, property] = await Promise.all([
-    supabaseAdmin.from("guests").select("*").eq("id", stay.guestId).maybeSingle(),
+    supabaseAdmin.from("guests").select("*").eq("id", stay.guestId).eq("propertyId", stay.propertyId).maybeSingle(),
     fetchProperty(stay.propertyId),
   ]);
   if (!guest) return;

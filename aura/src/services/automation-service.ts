@@ -27,7 +27,7 @@ export class AutomationService {
       const { data: stay } = await supabase.from('stays').select('*').eq('id', stayId).single();
       if (!stay) return;
 
-      const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).single();
+      const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).eq('propertyId', propertyId).single();
       if (!guest || !guest.phone) return;
 
       let cabin;
@@ -536,7 +536,7 @@ export class AutomationService {
         return { queued: false, reason: 'already_queued' };
       }
 
-      const { data: guest } = await supabaseAdmin.from('guests').select('*').eq('id', stay.guestId).single();
+      const { data: guest } = await supabaseAdmin.from('guests').select('*').eq('id', stay.guestId).eq('propertyId', propertyId).single();
       if (!guest?.phone) return { queued: false, reason: 'guest_no_phone' };
 
       let cabin: Cabin | undefined = undefined;

@@ -278,7 +278,7 @@ export async function POST(request: NextRequest) {
                 if (stayData) {
                     const [{ data: cabinData }, { data: guestData }] = await Promise.all([
                         supabaseAdmin.from('cabins').select('number').eq('id', stayData.cabinId).single(),
-                        supabaseAdmin.from('guests').select('fullName').eq('id', stayData.guestId).single(),
+                        supabaseAdmin.from('guests').select('fullName').eq('id', stayData.guestId).eq('propertyId', propertyId).single(),
                     ]);
                     if (cabinData && guestData) {
                         const firstName = (guestData.fullName as string).split(' ')[0];

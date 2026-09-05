@@ -327,7 +327,7 @@ export const GuestService = {
     if (!currentId || !currentId.toUpperCase().startsWith('GUEST')) return currentId;
 
     try {
-      const { data: temp } = await db().from('guests').select('*').eq('id', currentId).maybeSingle();
+      const { data: temp } = await db().from('guests').select('*').eq('id', currentId).eq('propertyId', propertyId).maybeSingle();
       if (!temp || temp.propertyId !== propertyId) return currentId;
       if (!hasValidDocument(temp.document)) return currentId;
 

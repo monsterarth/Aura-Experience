@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
             const { data: guests } = await supabaseAdmin
                 .from('guests')
                 .select('id, fullName')
-                .in('id', guestIds);
+                .in('id', guestIds).eq('propertyId', propertyId);
             (guests || []).forEach((g: any) => { guestNameMap[g.id] = g.fullName; });
         }
 

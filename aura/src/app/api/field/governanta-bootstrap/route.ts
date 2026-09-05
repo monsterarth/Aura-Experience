@@ -78,7 +78,7 @@ export async function GET(req: Request) {
     const { data: guests } = await supabaseAdmin
       .from('guests')
       .select('id, fullName')
-      .in('id', guestIds as string[]);
+      .in('id', guestIds as string[]).eq('propertyId', propertyId);
     (guests ?? []).forEach((g: any) => { guestMap[g.id] = g.fullName; });
   }
   const occupancy: Record<string, any> = {};

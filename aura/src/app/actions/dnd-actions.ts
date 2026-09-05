@@ -76,7 +76,7 @@ export async function toggleGuestDND(
     const { data: guest } = await supabaseAdmin
       .from('guests')
       .select('fullName')
-      .eq('id', stay.guestId)
+      .eq('id', stay.guestId).eq('propertyId', stay.propertyId)
       .single();
     guestFullName = guest?.fullName ?? undefined;
   }

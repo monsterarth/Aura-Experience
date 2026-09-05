@@ -86,7 +86,7 @@ export async function GET(req: Request) {
         const { data: guest } = await supabaseAdmin
           .from('guests')
           .select('fullName, additionalGuests')
-          .eq('id', stay.guestId)
+          .eq('id', stay.guestId).eq('propertyId', propertyId)
           .maybeSingle();
 
         // Buscar nome da cabana

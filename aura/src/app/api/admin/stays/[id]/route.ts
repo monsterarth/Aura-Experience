@@ -28,7 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     const [gRes, cRes] = await Promise.all([
         stay.guestId
-            ? supabaseAdmin.from('guests').select('*').eq('id', stay.guestId).maybeSingle()
+            ? supabaseAdmin.from('guests').select('*').eq('id', stay.guestId).eq('propertyId', stay.propertyId).maybeSingle()
             : Promise.resolve({ data: null }),
         stay.cabinId
             ? supabaseAdmin.from('cabins').select('*').eq('id', stay.cabinId).maybeSingle()
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         const [{ data: cabinData }, { data: guestData }] = await Promise.all([
             supabaseAdmin.from('cabins').select('number').eq('id', cabinId).single(),
             stay.guestId
-                ? supabaseAdmin.from('guests').select('fullName').eq('id', stay.guestId).single()
+                ? supabaseAdmin.from('guests').select('fullName').eq('id', stay.guestId).eq('propertyId', propertyId).single()
                 : Promise.resolve({ data: null }),
         ]);
         const cabinNum = cabinData?.number || cabinId;

@@ -151,7 +151,7 @@ export async function GET(request: Request) {
         const { data: guestSnap } = await supabaseAdmin
           .from('guests')
           .select('*')
-          .eq('id', stay.guestId)
+          .eq('id', stay.guestId).eq('propertyId', propertyId)
           .maybeSingle();
 
         if (!guestSnap || !guestSnap.phone) continue;

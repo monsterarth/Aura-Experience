@@ -182,7 +182,7 @@ export class SurveyService {
 
     const [cabinsRes, guestsRes] = await Promise.all([
       cabinIds.length ? client.from('cabins').select('id, name').in('id', cabinIds) : Promise.resolve({ data: [] }),
-      guestIds.length ? client.from('guests').select('id, fullName').in('id', guestIds) : Promise.resolve({ data: [] }),
+      guestIds.length ? client.from('guests').select('id, fullName').in('id', guestIds).eq('propertyId', propertyId) : Promise.resolve({ data: [] }),
     ]);
 
     const cabinName = new Map<string, string>();

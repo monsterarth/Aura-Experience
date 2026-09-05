@@ -38,7 +38,7 @@ const LAST_EXITS_SWEEP = 400;
  * "Sem avaliação" para todo mundo, e buscar por "promotor"/"detrator" nunca
  * achava nada.
  */
-async function enrichStays(stays: any[]) {
+async function enrichStays(propertyId: string, stays: any[]) {
     if (!supabaseAdmin || stays.length === 0) return [];
 
     const guestIds = Array.from(new Set(stays.filter((s: any) => s.guestId).map((s: any) => s.guestId as string)));
@@ -47,7 +47,7 @@ async function enrichStays(stays: any[]) {
 
     const [guestsRes, cabinsRes, folioRes, surveyRes] = await Promise.all([
         guestIds.length > 0
-            ? supabaseAdmin.from('guests').select('id, fullName, document').in('id', guestIds)
+            ? supabaseAdmin.from('guests').select('id, fullName, document').in('id', guestIds).eq('propertyId', propertyId)
             : Promise.resolve({ data: [] as any[], error: null }),
         cabinIds.length > 0
             ? supabaseAdmin.from('cabins').select('id, name').in('id', cabinIds)
@@ -167,7 +167,7 @@ async function lastExitsByCabin(propertyId: string) {
         for (const stay of found) if (stay?.cabinId) lastByCabin.set(stay.cabinId, stay);
     }
 
-    const enriched = await enrichStays(Array.from(lastByCabin.values()));
+    const enriched = await enrichStays(propertyId, Array.from(lastByCabin.values()));
     const byId = new Map(enriched.map((s: any) => [s.id, s]));
 
     return eligible
@@ -257,7 +257,7 @@ export async function GET(request: NextRequest) {
         const { data: stays, error } = await query;
         if (error || !stays || stays.length === 0) return NextResponse.json([], { status: 200 });
 
-        const enriched = await enrichStays(stays);
+        const enriched = await enrichStays(propertyId, stays);
 
         return NextResponse.json(enriched);
     } catch {

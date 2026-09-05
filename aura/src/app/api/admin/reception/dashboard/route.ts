@@ -207,7 +207,7 @@ export async function GET(request: NextRequest) {
         const arrivalGuestMap: Record<string, string> = {};
         if (arrivalGuestIds.length > 0) {
             const { data: guestRows } = await supabaseAdmin
-                .from('guests').select('id, fullName').in('id', arrivalGuestIds);
+                .from('guests').select('id, fullName').in('id', arrivalGuestIds).eq('propertyId', propertyId);
             (guestRows ?? []).forEach((g: any) => { arrivalGuestMap[g.id] = g.fullName; });
         }
         const todayArrivals = arrivalsRaw.map((s: any) => ({
@@ -230,7 +230,7 @@ export async function GET(request: NextRequest) {
             const gIds = Array.from(new Set(pend.filter(p => p.guestId).map(p => p.guestId as string)));
             const names: Record<string, string> = {};
             if (gIds.length > 0) {
-                const { data: gs } = await supabaseAdmin.from('guests').select('id, fullName').in('id', gIds);
+                const { data: gs } = await supabaseAdmin.from('guests').select('id, fullName').in('id', gIds).eq('propertyId', propertyId);
                 (gs ?? []).forEach((g: any) => { names[g.id] = g.fullName; });
             }
             petExceptions = pend.map(p => ({

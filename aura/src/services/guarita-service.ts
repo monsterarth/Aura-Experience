@@ -247,7 +247,7 @@ export const GuaritaService = {
       out.checkOut = stay.checkOut;
       if (out.source === "none") { out.source = "stay"; out.kind = "guest"; }
       const [{ data: guest }, { data: cabin }] = await Promise.all([
-        stay.guestId ? db().from("guests").select("fullName").eq("id", stay.guestId).maybeSingle() : Promise.resolve({ data: null }),
+        stay.guestId ? db().from("guests").select("fullName").eq("id", stay.guestId).eq("propertyId", propertyId).maybeSingle() : Promise.resolve({ data: null }),
         stay.cabinId ? db().from("cabins").select("name").eq("id", stay.cabinId).maybeSingle() : Promise.resolve({ data: null }),
       ]);
       out.guestName = (guest as any)?.fullName ?? null;
@@ -713,7 +713,7 @@ export const GuaritaService = {
     const cabinIds = Array.from(new Set((stays ?? []).map(s => s.cabinId).filter(Boolean))) as string[];
 
     const [{ data: guests }, { data: cabins }] = await Promise.all([
-      guestIds.length ? db().from("guests").select('id, "fullName"').in("id", guestIds) : Promise.resolve({ data: [] as any[] }),
+      guestIds.length ? db().from("guests").select('id, "fullName"').in("id", guestIds).eq("propertyId", propertyId) : Promise.resolve({ data: [] as any[] }),
       cabinIds.length ? db().from("cabins").select("id, name").in("id", cabinIds) : Promise.resolve({ data: [] as any[] }),
     ]);
 
@@ -780,7 +780,7 @@ export const GuaritaService = {
     const ids = Array.from(new Set([...arrivals, ...departures, ...housedRows].flatMap(s => [s.guestId, s.cabinId]).filter(Boolean))) as string[];
 
     const [{ data: guests }, { data: cabins }] = await Promise.all([
-      ids.length ? db().from("guests").select('id, "fullName"').in("id", ids) : Promise.resolve({ data: [] as any[] }),
+      ids.length ? db().from("guests").select('id, "fullName"').in("id", ids).eq("propertyId", propertyId) : Promise.resolve({ data: [] as any[] }),
       ids.length ? db().from("cabins").select("id, name").in("id", ids) : Promise.resolve({ data: [] as any[] }),
     ]);
     const nameById: Record<string, string> = {};

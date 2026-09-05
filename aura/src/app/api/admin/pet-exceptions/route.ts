@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     const guestIds = Array.from(new Set(pend.map((p) => p.guestId).filter(Boolean) as string[]));
     const cabinIds = Array.from(new Set(pend.map((p) => p.cabinId).filter(Boolean) as string[]));
     const [gRes, cRes] = await Promise.all([
-      guestIds.length ? supabaseAdmin.from('guests').select('id, fullName').in('id', guestIds) : Promise.resolve({ data: [] }),
+      guestIds.length ? supabaseAdmin.from('guests').select('id, fullName').in('id', guestIds).eq('propertyId', propertyId) : Promise.resolve({ data: [] }),
       cabinIds.length ? supabaseAdmin.from('cabins').select('id, name').in('id', cabinIds) : Promise.resolve({ data: [] }),
     ]);
     const gMap: Record<string, string> = {};

@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         const { data: guest } = await supabaseAdmin
             .from("guests")
             .select("preferredLanguage")
-            .eq("id", stay.guestId)
+            .eq("id", stay.guestId).eq("propertyId", propertyId)
             .maybeSingle();
         if (guest?.preferredLanguage && ['pt', 'en', 'es'].includes(guest.preferredLanguage)) {
             preferredLanguage = guest.preferredLanguage;

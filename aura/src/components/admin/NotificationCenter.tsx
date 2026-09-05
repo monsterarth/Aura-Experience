@@ -477,7 +477,7 @@ export function NotificationCenter() {
       const { data: stays } = await supabase.from('stays').select('id, guestId').in('id', stayIds);
       const guestIds = Array.from(new Set((stays || []).map((s: any) => s.guestId).filter(Boolean)));
       if (guestIds.length) {
-        const { data: guests } = await supabase.from('guests').select('id, fullName').in('id', guestIds);
+        const { data: guests } = await supabase.from('guests').select('id, fullName').in('id', guestIds).eq('propertyId', propertyId);
         const guestMap: Record<string, string> = Object.fromEntries((guests || []).map((g: any) => [g.id, g.fullName]));
         stayGuestMap = Object.fromEntries((stays || []).map((s: any) => [s.id, guestMap[s.guestId] || '']));
       }

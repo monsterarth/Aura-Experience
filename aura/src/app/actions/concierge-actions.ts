@@ -87,7 +87,7 @@ export async function submitConciergeRequest(
       ? supabaseAdmin.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle()
       : Promise.resolve({ data: null as { name: string } | null }),
     stay.guestId
-      ? supabaseAdmin.from('guests').select('fullName').eq('id', stay.guestId).maybeSingle()
+      ? supabaseAdmin.from('guests').select('fullName').eq('id', stay.guestId).eq('propertyId', stay.propertyId).maybeSingle()
       : Promise.resolve({ data: null as { fullName: string } | null }),
   ]);
   const itemName = (itemRow as ConciergeItem | null)?.name ?? 'item';

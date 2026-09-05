@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
                 .from('stays').select('guestId, cabinId').eq('id', stayId).single();
             if (stayRow?.guestId) {
                 const [{ data: guestRow }, { data: cabinRow }] = await Promise.all([
-                    supabaseAdmin.from('guests').select('fullName').eq('id', stayRow.guestId).maybeSingle(),
+                    supabaseAdmin.from('guests').select('fullName').eq('id', stayRow.guestId).eq('propertyId', propertyId).maybeSingle(),
                     stayRow.cabinId ? supabaseAdmin.from('cabins').select('name').eq('id', stayRow.cabinId).maybeSingle() : Promise.resolve({ data: null }),
                 ]);
                 if (guestRow?.fullName) guestDisplayName = guestRow.fullName;

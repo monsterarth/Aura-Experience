@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
 
         const [guestsRes, cabinsRes] = await Promise.all([
             guestIds.length > 0
-                ? supabaseAdmin.from('guests').select('id, fullName').in('id', guestIds)
+                ? supabaseAdmin.from('guests').select('id, fullName').in('id', guestIds).eq('propertyId', propertyId)
                 : Promise.resolve({ data: [] as any[], error: null }),
             cabinIds.length > 0
                 ? supabaseAdmin.from('cabins').select('id, name').in('id', cabinIds)
